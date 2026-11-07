@@ -1,5 +1,6 @@
 import {
   ArenaObstacle,
+  FighterBodyModel,
   FighterRuntime,
   RagdollConstraint,
   RagdollNode,
@@ -9,7 +10,7 @@ import {
 } from '../types/game';
 import { clamp, lerp, lerpAngle, solveTwoBoneIK } from './math';
 
-// Sleek, tall athletic classic stickman proportions (arena = 960x540, box height = 450px)
+// Default baseline stickman proportions (arena = 960x540, box height = 450px)
 // Total standing height ~ 128px (~29% of arena box, matching classic @scenic.chill proportions!)
 export const HEAD_RADIUS = 12.5;
 export const TORSO_LEN = 42;
@@ -21,18 +22,27 @@ export const STAND_PELVIS_HEIGHT = 58;
 
 // Node indices in ragdollNodes array:
 // 0: head, 1: neck, 2: pelvis, 3: elbowL, 4: handL, 5: elbowR, 6: handR, 7: kneeL, 8: footL, 9: kneeR, 10: footR
-export function createInitialSkeleton(x: number, floorY: number): StickmanSkeleton {
-  const pelvis: Vec2 = { x, y: floorY - STAND_PELVIS_HEIGHT };
-  const neck: Vec2 = { x, y: pelvis.y - TORSO_LEN };
-  const head: Vec2 = { x, y: neck.y - HEAD_RADIUS - 3 };
-  const elbowL: Vec2 = { x: x - 14, y: neck.y + 19 };
-  const handL: Vec2 = { x: x - 8, y: neck.y + 36 };
-  const elbowR: Vec2 = { x: x + 8, y: neck.y + 22 };
-  const handR: Vec2 = { x: x + 24, y: neck.y + 16 };
-  const kneeL: Vec2 = { x: x - 4, y: pelvis.y + 29 };
-  const footL: Vec2 = { x: x - 13, y: floorY };
-  const kneeR: Vec2 = { x: x + 11, y: pelvis.y + 29 };
-  const footR: Vec2 = { x: x + 15, y: floorY };
+export function createInitialSkeleton(x: number, floorY: number, body?: FighterBodyModel): StickmanSkeleton {
+  const pelvisH = body?.pelvisHeight ?? STAND_PELVIS_HEIGHT;
+  const torsoL = body?.torsoLen ?? TORSO_LEN;
+  const headR = body?.headRadius ?? HEAD_RADIUS;
+  const upperA = body?.upperArm ?? UPPER_ARM;
+  const lowerA = body?.lowerArm ?? LOWER_ARM;
+  const thighL = body?.thighLen ?? THIGH_LEN;
+  const shinL = body?.shinLen ?? SHIN_LEN;
+  const s = body?.scale ?? 1.0;
+
+  const pelvis: Vec2 = { x, y: floorY - pelvisH };
+  const neck: Vec2 = { x, y: pelvis.y - torsoL };
+  const head: Vec2 = { x, y: neck.y - headR - 3 };
+  const elbowL: Vec2 = { x: x - 14 * s, y: neck.y + 19 * s };
+  const handL: Vec2 = { x: x - 8 * s, y: neck.y + 36 * s };
+  const elbowR: Vec2 = { x: x + 8 * s, y: neck.y + 22 * s };
+  const handR: Vec2 = { x: x + 24 * s, y: neck.y + 16 * s };
+  const kneeL: Vec2 = { x: x - 4 * s, y: pelvis.y + 29 * s };
+  const footL: Vec2 = { x: x - 13 * s, y: floorY };
+  const kneeR: Vec2 = { x: x + 11 * s, y: pelvis.y + 29 * s };
+  const footR: Vec2 = { x: x + 15 * s, y: floorY };
 
   const pts = [head, neck, pelvis, elbowL, handL, elbowR, handR, kneeL, footL, kneeR, footR];
   const ragdollNodes: RagdollNode[] = pts.map((p) => ({
@@ -43,17 +53,17 @@ export function createInitialSkeleton(x: number, floorY: number): StickmanSkelet
   }));
 
   const ragdollConstraints: RagdollConstraint[] = [
-    { a: 0, b: 1, length: HEAD_RADIUS + 3 },
-    { a: 1, b: 2, length: TORSO_LEN },
-    { a: 0, b: 2, length: TORSO_LEN + HEAD_RADIUS + 2 }, // spinal stiffness helper
-    { a: 1, b: 3, length: UPPER_ARM },
-    { a: 3, b: 4, length: LOWER_ARM },
-    { a: 1, b: 5, length: UPPER_ARM },
-    { a: 5, b: 6, length: LOWER_ARM },
-    { a: 2, b: 7, length: THIGH_LEN },
-    { a: 7, b: 8, length: SHIN_LEN },
-    { a: 2, b: 9, length: THIGH_LEN },
-    { a: 9, b: 10, length: SHIN_LEN },
+    { a: 0, b: 1, length: headR + 3 },
+    { a: 1, b: 2, length: torsoL },
+    { a: 0, b: 2, length: torsoL + headR + 2 }, // spinal stiffness helper
+    { a: 1, b: 3, length: upperA },
+    { a: 3, b: 4, length: lowerA },
+    { a: 1, b: 5, length: upperA },
+    { a: 5, b: 6, length: lowerA },
+    { a: 2, b: 7, length: thighL },
+    { a: 7, b: 8, length: shinL },
+    { a: 2, b: 9, length: thighL },
+    { a: 9, b: 10, length: shinL },
   ];
 
   return {
@@ -529,8 +539,12 @@ export function updateProceduralIKSkeleton(
   }
   f.spineLean = lerp(f.spineLean, desiredLean, poseSmooth);
 
+  const bm = f.def?.bodyModel;
+  const torsoBase = bm?.torsoLen ?? TORSO_LEN;
+  const headR = bm?.headRadius ?? HEAD_RADIUS;
+
   const torsoHeightScale = isCrushed ? 0.6 : f.crouching ? 0.66 : f.stretchScaleY;
-  const effectiveTorso = TORSO_LEN * torsoHeightScale * verticalSign;
+  const effectiveTorso = torsoBase * torsoHeightScale * verticalSign;
   const neckHorizontal = f.spineLean;
   const neckVertical =
     Math.sqrt(Math.max(144, effectiveTorso * effectiveTorso - neckHorizontal * neckHorizontal)) *
@@ -540,7 +554,7 @@ export function updateProceduralIKSkeleton(
   sk.neck.y = sk.pelvis.y - neckVertical;
 
   sk.head.x = sk.neck.x + neckHorizontal * 0.22;
-  sk.head.y = sk.neck.y - (HEAD_RADIUS + 2.5) * verticalSign;
+  sk.head.y = sk.neck.y - (headR + 2.5) * verticalSign;
 
   // Electro-stun high-voltage jitter (with anatomical joint orientations)
   if (f.stunTimer > 0 && f.electroFlash) {
@@ -650,8 +664,10 @@ export function updateProceduralIKSkeleton(
 
   // Anatomically accurate knee bend: knees ALWAYS bend forward in facing direction!
   const kneeBend = (-dir * verticalSign) as 1 | -1;
-  const legL = solveTwoBoneIK(sk.pelvis, f.smoothFootL, THIGH_LEN, SHIN_LEN, kneeBend);
-  const legR = solveTwoBoneIK(sk.pelvis, f.smoothFootR, THIGH_LEN, SHIN_LEN, kneeBend);
+  const thighL = bm?.thighLen ?? THIGH_LEN;
+  const shinL = bm?.shinLen ?? SHIN_LEN;
+  const legL = solveTwoBoneIK(sk.pelvis, f.smoothFootL, thighL, shinL, kneeBend);
+  const legR = solveTwoBoneIK(sk.pelvis, f.smoothFootR, thighL, shinL, kneeBend);
   sk.kneeL = legL.mid;
   sk.footL = legL.end;
   sk.kneeR = legR.mid;
@@ -916,18 +932,20 @@ export function updateProceduralIKSkeleton(
   const elbowBendL = (signHandL * verticalSign) as 1 | -1;
   const elbowBendR = (signHandR * verticalSign) as 1 | -1;
 
+  const upperA = (bm?.upperArm ?? UPPER_ARM) * armScale;
+  const lowerA = (bm?.lowerArm ?? LOWER_ARM) * armScale;
   const armL = solveTwoBoneIK(
     sk.neck,
     f.smoothHandL,
-    UPPER_ARM * armScale,
-    LOWER_ARM * armScale,
+    upperA,
+    lowerA,
     elbowBendL
   );
   const armR = solveTwoBoneIK(
     sk.neck,
     f.smoothHandR,
-    UPPER_ARM * armScale,
-    LOWER_ARM * armScale,
+    upperA,
+    lowerA,
     elbowBendR
   );
   sk.elbowL = armL.mid;

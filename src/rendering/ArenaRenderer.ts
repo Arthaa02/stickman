@@ -539,7 +539,11 @@ export class ArenaRenderer {
       ctx.shadowColor = f.def.color;
     }
 
-    this.drawSkeletonBackAndTorso(f.skeleton, bodyColor, 5.8, f.dismemberedBones);
+    const lineWidth = f.def.bodyModel?.lineWidth ?? 5.8;
+    const headRadius = f.def.bodyModel?.headRadius ?? HEAD_RADIUS;
+    const modelScale = f.def.bodyModel?.scale ?? 1.0;
+
+    this.drawSkeletonBackAndTorso(f.skeleton, bodyColor, lineWidth, f.dismemberedBones, headRadius);
 
     // 4. Held Articulated Oversized Weapon (sandwiched naturally between back arm L & front arm R!)
     const yoyoInFlight =
@@ -581,6 +585,10 @@ export class ArenaRenderer {
         }
       }
 
+      if (modelScale !== 1.0) {
+        ctx.scale(modelScale, modelScale);
+      }
+
       drawProceduralWeaponVector(ctx, id, {
         broken: f.weaponBroken,
         blueFireCoated: f.blueFireCoated,
@@ -620,7 +628,7 @@ export class ArenaRenderer {
     }
 
     // 5. Front Arm (R) drawn over weapon handle for crisp grip!
-    this.drawSkeletonFrontArm(f.skeleton, bodyColor, 5.8, f.dismemberedBones);
+    this.drawSkeletonFrontArm(f.skeleton, bodyColor, lineWidth, f.dismemberedBones);
 
     // 5B. Stuck Projectiles embedded in ragdoll bones
     this.drawStuckProjectiles(f);
@@ -667,7 +675,8 @@ export class ArenaRenderer {
     sk: StickmanSkeleton,
     color: string,
     lineWidth: number,
-    dismembered?: Set<number>
+    dismembered?: Set<number>,
+    headRadius: number = HEAD_RADIUS
   ): void {
     const ctx = this.ctx;
     ctx.save();
@@ -715,7 +724,7 @@ export class ArenaRenderer {
     // Solid Colored Stickman Head (hidden if decapitated)
     if (!dismembered?.has(0)) {
       ctx.beginPath();
-      ctx.arc(sk.head.x, sk.head.y, HEAD_RADIUS, 0, Math.PI * 2);
+      ctx.arc(sk.head.x, sk.head.y, headRadius, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();

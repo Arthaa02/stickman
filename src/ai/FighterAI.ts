@@ -239,6 +239,28 @@ export class FighterAI {
         return cmd;
       }
 
+      // Tactical evasion or parry against incoming heavy melee windups (Hammer, Anchor, etc.)
+      if (p.incomingThreat.isMeleeWindup) {
+        if (id === 'long_sword' && me.hasWeapon && me.parryTimer <= 0) {
+          me.aiState = 'DEFENDING';
+          cmd.parryGuard = true;
+          return cmd;
+        }
+        if (id === 'bulwark' && me.shieldIntegrity > 0) {
+          me.aiState = 'DEFENDING';
+          cmd.parryGuard = true;
+          cmd.moveDir = -p.incomingThreat.fromDir as -1 | 1;
+          return cmd;
+        }
+        // Agile acrobats / light fighters dodge back from the devastating seismic impact zone!
+        if (me.def.bodyModel?.scale < 1.0) {
+          me.aiState = 'EVADING';
+          cmd.moveDir = -p.incomingThreat.fromDir as -1 | 1;
+          cmd.crouch = true;
+          return cmd;
+        }
+      }
+
       // High projectile shots can be ducked under
       if (p.incomingThreat.isHighShot && me.grounded && !p.incomingThreat.isStreamBarrage) {
         me.aiState = 'EVADING';
@@ -246,7 +268,7 @@ export class FighterAI {
         return cmd;
       }
 
-      // No useless jumping or running away! Retaliate with immediate offensive fury!
+      // Retaliate with offensive ability if ready!
       if (me.specialCooldown <= 0) {
         me.aiState = 'ATTACKING';
         cmd.specialAbility = true;
@@ -440,26 +462,31 @@ export class FighterAI {
         return cmd;
       }
     } else {
-      // In combat engagement range (including point-blank) - FIRM COMBAT POISE!
-      me.aiState = 'ATTACKING';
-
-      // Melee rushers maintain pressure; casters/heavy fighters plant their feet
-      if (maxR <= 175 && p.horizDist > 55) {
-        cmd.moveDir = p.dirToTarget;
-      } else {
-        cmd.moveDir = 0; // Solid planted stance, zero aimless jitter
-      }
-
-      // Priority 1: Unleash devastating signature superpower whenever off cooldown!
+      // In combat engagement range - POISED TACTICAL RHYTHM!
+      // Priority 1: Unleash signature ability whenever ready
       if (me.specialCooldown <= 0) {
+        me.aiState = 'ATTACKING';
         cmd.specialAbility = true;
         return cmd;
       }
 
-      // Priority 2: Relentless primary attacks!
+      // Priority 2: Execute primary attack when off cooldown
       if (me.attackCooldown <= 0) {
+        me.aiState = 'ATTACKING';
         cmd.primaryAttack = true;
         return cmd;
+      }
+
+      // Priority 3: Cooldown Spacing & Footsies (breathing room between exchanges!)
+      me.aiState = 'STALKING';
+      if (p.horizDist < minR - 8) {
+        // Too close for weapon leverage -> take a measured step back
+        cmd.moveDir = -p.dirToTarget as -1 | 1;
+      } else if (p.horizDist > maxR) {
+        cmd.moveDir = p.dirToTarget;
+      } else {
+        // Holding firm ready stance, observing opponent's next move
+        cmd.moveDir = 0;
       }
     }
 

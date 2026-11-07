@@ -84,6 +84,19 @@ export interface Vec2 {
   y: number;
 }
 
+export interface FighterBodyModel {
+  scale: number;
+  lineWidth: number;
+  headRadius: number;
+  torsoLen: number;
+  upperArm: number;
+  lowerArm: number;
+  thighLen: number;
+  shinLen: number;
+  pelvisHeight: number;
+  mass: number;
+}
+
 export interface FighterDefinition {
   numId: number;
   id: FighterId;
@@ -101,6 +114,7 @@ export interface FighterDefinition {
   idealRangeMax: number;
   attackCooldown: number;
   specialCooldown: number;
+  bodyModel: FighterBodyModel;
   aiBehaviorSummary: string;
   counterNotes: string;
   stitchIconPrompt: string;

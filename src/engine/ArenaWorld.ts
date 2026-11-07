@@ -148,13 +148,13 @@ export class ArenaWorld {
     facing: 1 | -1
   ): FighterRuntime {
     const def = FIGHTER_MAP[id];
-    const sk = createInitialSkeleton(startX, ARENA_FLOOR_Y);
+    const sk = createInitialSkeleton(startX, ARENA_FLOOR_Y, def.bodyModel);
     const initAngle = facing === 1 ? 0 : Math.PI;
     return {
       slot,
       def,
       x: startX,
-      y: ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT,
+      y: ARENA_FLOOR_Y - (def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT),
       vx: 0,
       vy: 0,
       facing,
@@ -402,8 +402,9 @@ export class ArenaWorld {
             this.obstacles
           );
         } else {
-          f.y = Math.min(ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT, f.y + 420 * dt);
-          f.grounded = f.y >= ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT - 1;
+          const pH = f.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT;
+          f.y = Math.min(ARENA_FLOOR_Y - pH, f.y + 420 * dt);
+          f.grounded = f.y >= ARENA_FLOOR_Y - pH - 1;
           updateProceduralIKSkeleton(
             f,
             dt,
@@ -602,7 +603,7 @@ export class ArenaWorld {
       f.wallClingTimer = 0.55;
       f.vy = 0;
       f.vx = 0;
-      f.y = Math.min(f.y, ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT - 95);
+      f.y = Math.min(f.y, ARENA_FLOOR_Y - (f.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT) - 95);
     }
 
     if (f.dashTimer > 0) {
@@ -760,10 +761,10 @@ export class ArenaWorld {
           this.addLog(`Sniper cracked ${enemy.def.name} with a heavy rifle-butt strike!`, f.def.color);
           break;
         }
-        // Rapid 0.35s tracking red laser lock -> fires blazing golden high-caliber bullet!
+        // Focused 0.42s tracking red laser lock -> fires blazing golden high-caliber bullet!
         f.windupType = 'SNIPER_LASER';
-        f.windupMax = 0.35;
-        f.windupTimer = 0.35;
+        f.windupMax = 0.42;
+        f.windupTimer = 0.42;
         f.laserTarget = { ...targetPos };
         break;
       }
@@ -1164,10 +1165,10 @@ export class ArenaWorld {
       }
 
       case 'hammer': {
-        // Fast, forceful seismic hammer slam wind-up!
+        // Forceful seismic hammer slam wind-up with clear, readable telegraph!
         f.windupType = 'HAMMER_SLAM';
-        f.windupMax = 0.38;
-        f.windupTimer = 0.38;
+        f.windupMax = 0.48;
+        f.windupTimer = 0.48;
         break;
       }
 
@@ -1816,7 +1817,7 @@ export class ArenaWorld {
             enemy.x > ARENA_WIDTH * 0.5
               ? ARENA_PADDING_X + 135
               : ARENA_WIDTH - ARENA_PADDING_X - 135;
-          const newY = ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT;
+          const newY = ARENA_FLOOR_Y - (f.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT);
 
           f.afterimages.push({
             x: oldX,
@@ -1996,7 +1997,7 @@ export class ArenaWorld {
             const count = this.clones.filter((c) => c.ownerSlot === f.slot).length;
             const offset = count === 0 ? -75 : 75;
             const cx = clamp(enemy.x + offset, ARENA_PADDING_X + 40, ARENA_WIDTH - ARENA_PADDING_X - 40);
-            const cy = ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT;
+            const cy = ARENA_FLOOR_Y - (f.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT);
             this.clones.push({
               id: this.nextEntityId++,
               ownerSlot: f.slot,
@@ -2008,7 +2009,7 @@ export class ArenaWorld {
               walkPhase: Math.random() * 6,
               attackAnim: 0,
               life: 8.5,
-              skeleton: createInitialSkeleton(cx, ARENA_FLOOR_Y),
+              skeleton: createInitialSkeleton(cx, ARENA_FLOOR_Y, f.def.bodyModel),
             });
             this.spawnBurstParticles(cx, cy - 15, '#818cf8', 15, 140, 'smoke');
           }
@@ -2463,13 +2464,13 @@ export class ArenaWorld {
       }
 
       case 'anchor': {
-        // Hop + Naval Depth-Charge Anchor Drop!
+        // Hop + Naval Depth-Charge Anchor Drop with colossal weight telegraph!
         f.vx = f.facing * 165;
         f.vy = -215;
         f.grounded = false;
         f.windupType = 'HAMMER_SLAM';
-        f.windupMax = 0.36;
-        f.windupTimer = 0.36;
+        f.windupMax = 0.46;
+        f.windupTimer = 0.46;
         break;
       }
 
@@ -2621,7 +2622,8 @@ export class ArenaWorld {
       this.hitClonesInReach(f.slot, impactX, f.y - 10, 120);
 
       // 2) Direct Warhammer / Naval Anchor hit!
-      if (Math.hypot(enemy.x - impactX, enemy.y - (ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT)) < 112) {
+      const enemyPelvisH = enemy.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT;
+      if (Math.hypot(enemy.x - impactX, enemy.y - (ARENA_FLOOR_Y - enemyPelvisH)) < 112) {
         if (!isAnchor && enemy.def.id === 'bulwark' && enemy.shieldIntegrity > 0) {
           enemy.shieldIntegrity = 0;
           enemy.shieldBlocking = false;
@@ -4129,7 +4131,8 @@ export class ArenaWorld {
         const owner = this.fighters[obs.ownerSlot];
         const enemy = this.fighters[obs.ownerSlot === 0 ? 1 : 0];
         const centerObs = obs.x + obs.width * 0.5;
-        if (Math.abs(enemy.x - centerObs) < obs.width * 0.5 + 18 && enemy.y + STAND_PELVIS_HEIGHT > obs.y) {
+        const ePelvisH = enemy.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT;
+        if (Math.abs(enemy.x - centerObs) < obs.width * 0.5 + 18 && enemy.y + ePelvisH > obs.y) {
           const pushDir = enemy.x >= owner.x ? 1 : -1;
           enemy.x = clamp(
             pushDir === 1 ? obs.x + obs.width + 18 : obs.x - 18,
@@ -4225,7 +4228,8 @@ export class ArenaWorld {
       const desiredVx = distX > 62 ? cl.facing * 225 : distX < 40 ? -cl.facing * 90 : 0;
       cl.vx += (desiredVx - cl.vx) * Math.min(1, dt * 10);
       cl.x = clamp(cl.x + cl.vx * dt, ARENA_PADDING_X + 24, ARENA_WIDTH - ARENA_PADDING_X - 24);
-      cl.y = ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT;
+      const ownerPH = this.fighters[cl.ownerSlot].def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT;
+      cl.y = ARENA_FLOOR_Y - ownerPH;
       const spdAbs = Math.abs(cl.vx);
       const walkBlend = clamp((spdAbs - 6) / 50, 0, 1);
       if (walkBlend > 0.01) {
@@ -4574,7 +4578,8 @@ export class ArenaWorld {
       if (f.wetTimer > 0) f.wetTimer = Math.max(0, f.wetTimer - dt);
       for (const z of this.floorZones) {
         const inX = f.x >= z.x && f.x <= z.x + z.width;
-        const nearFloor = Math.abs(f.y - (ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT)) < 34;
+        const fPH = f.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT;
+        const nearFloor = Math.abs(f.y - (ARENA_FLOOR_Y - fPH)) < 34;
 
         if (z.kind === 'TORNADO' && z.ownerSlot !== f.slot && inX && f.y > ARENA_FLOOR_Y - 190) {
           if (f.def.id !== 'anchor' && f.phaseTimer <= 0) {
@@ -4672,7 +4677,7 @@ export class ArenaWorld {
         );
         if (f.ragdollTimer <= 0 && f.hp > 0) {
           f.recoveryTimer = 0.38; // Begin active get-up recovery
-          f.y = Math.min(f.y, ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT);
+          f.y = Math.min(f.y, ARENA_FLOOR_Y - (f.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT));
           updateProceduralIKSkeleton(
             f,
             dt,
@@ -4737,20 +4742,21 @@ export class ArenaWorld {
       }
 
       // Collide horizontally & vertically with Glass / Stone Obstacles (Shadow phases cleanly through!)
+      const fPelvisH = f.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT;
       if (f.phaseTimer <= 0) {
         for (const obs of this.obstacles) {
           const halfW = 15;
           if (
             f.x + halfW > obs.x &&
             f.x - halfW < obs.x + obs.width &&
-            f.y + STAND_PELVIS_HEIGHT > obs.y &&
+            f.y + fPelvisH > obs.y &&
             f.y - 54 < obs.y + obs.height
           ) {
             const penLeft = f.x + halfW - obs.x;
             const penRight = obs.x + obs.width - (f.x - halfW);
-            const penTop = f.y + STAND_PELVIS_HEIGHT - obs.y;
+            const penTop = f.y + fPelvisH - obs.y;
             if (penTop < 22 && f.vy >= 0) {
-              f.y = obs.y - STAND_PELVIS_HEIGHT;
+              f.y = obs.y - fPelvisH;
               f.vy = f.def.id === 'rubber' && f.vy > 360 ? -Math.abs(f.vy) * 0.45 : 0;
               f.grounded = Math.abs(f.vy) < 40;
             } else if (penLeft < penRight) {
@@ -4770,7 +4776,7 @@ export class ArenaWorld {
         if (
           f.x + halfW > plat.x &&
           f.x - halfW < plat.x + plat.width &&
-          f.y + STAND_PELVIS_HEIGHT > plat.y &&
+          f.y + fPelvisH > plat.y &&
           f.y - 48 < plat.y + plat.height
         ) {
           if (plat.spike) {
@@ -4791,9 +4797,9 @@ export class ArenaWorld {
             this.spawnBurstParticles(f.x, plat.y, '#f472b6', 8, 160, 'ring');
           } else {
             // Solid floating platform
-            const penTop = f.y + STAND_PELVIS_HEIGHT - plat.y;
+            const penTop = f.y + fPelvisH - plat.y;
             if (penTop < 22 && f.vy >= 0) {
-              f.y = plat.y - STAND_PELVIS_HEIGHT;
+              f.y = plat.y - fPelvisH;
               f.vy = f.def.id === 'rubber' && f.vy > 360 ? -Math.abs(f.vy) * 0.45 : 0;
               f.grounded = Math.abs(f.vy) < 40;
             }
@@ -4837,7 +4843,7 @@ export class ArenaWorld {
 
       // Arena Ceiling (including Gravity Inversion ceiling slam!)
       const minY = ARENA_TOP + 58;
-      const maxY = ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT;
+      const maxY = ARENA_FLOOR_Y - fPelvisH;
       f.grounded = false;
       f.onCeiling = false;
 
