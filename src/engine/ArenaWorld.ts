@@ -670,17 +670,18 @@ export class ArenaWorld {
   }
 
   private executeBarehandedAttack(f: FighterRuntime): void {
-    f.attackCooldown = 0.44;
-    f.attackAnimDuration = 0.26;
-    f.activeAttackTimer = 0.26;
-    f.attackStyle = 'THRUST';
-    f.vx += f.facing * 120;
+    f.attackCooldown = 0.32;
+    f.attackAnimDuration = 0.22;
+    f.activeAttackTimer = 0.22;
+    f.attackStyle = f.comboStep % 2 === 0 ? 'THRUST' : 'SLASH_DOWN';
+    f.comboStep++;
+    f.vx += f.facing * 160;
     this.sound?.playSlash();
 
     const enemy = this.fighters[f.slot === 0 ? 1 : 0];
-    if (Math.hypot(enemy.x - (f.x + f.facing * 44), enemy.y - f.y) < 62) {
-      this.damageFighter(enemy, f.slot, 7, f.facing * 165, 0, 'BLUNT', f.x);
-      this.spawnBurstParticles(enemy.x, enemy.y - 24, '#cbd5e1', 6, 120, 'spark');
+    if (Math.hypot(enemy.x - (f.x + f.facing * 44), enemy.y - f.y) < 68) {
+      this.damageFighter(enemy, f.slot, 14, f.facing * 260, -80, 'BLUNT', f.x);
+      this.spawnBurstParticles(enemy.x, enemy.y - 24, '#cbd5e1', 10, 160, 'spark');
     }
   }
 
@@ -748,10 +749,21 @@ export class ArenaWorld {
       }
 
       case 'sniper': {
-        // Initiate tracking red laser lock -> fires blazing golden high-caliber bullet!
+        // Point-blank defensive rifle butt strike if enemy rushes close!
+        if (Math.hypot(enemy.x - f.x, enemy.y - f.y) < 88) {
+          f.attackStyle = 'SLASH_DOWN';
+          f.attackAnimDuration = 0.24;
+          f.activeAttackTimer = 0.24;
+          this.sound?.playWeaponClash();
+          this.damageFighter(enemy, f.slot, 22, f.facing * 420, -160, 'BLUNT', f.x);
+          this.spawnBurstParticles(enemy.x, enemy.y - 20, '#facc15', 14, 240, 'spark');
+          this.addLog(`Sniper cracked ${enemy.def.name} with a heavy rifle-butt strike!`, f.def.color);
+          break;
+        }
+        // Rapid 0.35s tracking red laser lock -> fires blazing golden high-caliber bullet!
         f.windupType = 'SNIPER_LASER';
-        f.windupMax = 1.15;
-        f.windupTimer = 1.15;
+        f.windupMax = 0.35;
+        f.windupTimer = 0.35;
         f.laserTarget = { ...targetPos };
         break;
       }
@@ -1152,10 +1164,10 @@ export class ArenaWorld {
       }
 
       case 'hammer': {
-        // Begin heavy wind-up slam!
+        // Fast, forceful seismic hammer slam wind-up!
         f.windupType = 'HAMMER_SLAM';
-        f.windupMax = 0.68;
-        f.windupTimer = 0.68;
+        f.windupMax = 0.38;
+        f.windupTimer = 0.38;
         break;
       }
 
@@ -1394,10 +1406,10 @@ export class ArenaWorld {
       }
 
       case 'laser': {
-        // Crisp 0.46s Prism Charge -> Instant Lightspeed Laser Ray!
+        // Crisp 0.20s Prism Charge -> Instant Lightspeed Laser Ray!
         f.windupType = 'LASER_CHARGE';
-        f.windupMax = 0.46;
-        f.windupTimer = 0.46;
+        f.windupMax = 0.20;
+        f.windupTimer = 0.20;
         f.laserTarget = { ...targetPos };
         break;
       }
@@ -1422,8 +1434,8 @@ export class ArenaWorld {
           vx: clamp(vx, -560, 560),
           vy: clamp(vy, -520, 260),
           radius: 13,
-          damage: 17,
-          knockback: 290,
+          damage: 26,
+          knockback: 340,
           isMetallic: false,
           blueFireCoated: f.blueFireCoated,
           gravity: bGrav,
@@ -1622,14 +1634,14 @@ export class ArenaWorld {
       }
 
       case 'sniper': {
-        // Evasive Backstep + Quick-Lock Laser!
+        // Crisp Evasive Backstep + Lightning-Fast Laser Lock!
         const away = f.x < enemy.x ? -1 : 1;
-        f.vx = away * 350;
-        f.vy = -440;
+        f.vx = away * 320;
+        f.vy = -380;
         f.grounded = false;
         f.windupType = 'SNIPER_LASER';
-        f.windupMax = 0.95;
-        f.windupTimer = 0.95;
+        f.windupMax = 0.28;
+        f.windupTimer = 0.28;
         f.laserTarget = { ...targetPos };
         break;
       }
@@ -2106,8 +2118,8 @@ export class ArenaWorld {
         f.vy = -240;
         f.grounded = false;
         f.windupType = 'HAMMER_SLAM';
-        f.windupMax = 0.76;
-        f.windupTimer = 0.76;
+        f.windupMax = 0.36;
+        f.windupTimer = 0.36;
         break;
       }
 
@@ -2456,8 +2468,8 @@ export class ArenaWorld {
         f.vy = -215;
         f.grounded = false;
         f.windupType = 'HAMMER_SLAM';
-        f.windupMax = 0.56;
-        f.windupTimer = 0.56;
+        f.windupMax = 0.36;
+        f.windupTimer = 0.36;
         break;
       }
 
@@ -2556,11 +2568,11 @@ export class ArenaWorld {
         kind: 'SNIPER_BULLET',
         x: muzzleX,
         y: muzzleY,
-        vx: dir.x * 1450,
-        vy: dir.y * 1450,
-        radius: 5,
-        damage: 27,
-        knockback: 340,
+        vx: dir.x * 1650,
+        vy: dir.y * 1650,
+        radius: 6,
+        damage: 36,
+        knockback: 420,
         isMetallic: true,
         blueFireCoated: f.blueFireCoated,
         gravity: 0,
@@ -2568,8 +2580,8 @@ export class ArenaWorld {
         color: '#eab308',
       });
 
-      this.spawnBurstParticles(muzzleX, muzzleY, '#facc15', 14, 240, 'spark');
-      this.screenShake = 6;
+      this.spawnBurstParticles(muzzleX, muzzleY, '#facc15', 18, 280, 'spark');
+      this.screenShake = 8;
       f.laserTarget = null;
     } else if (type === 'LASER_CHARGE') {
       if (!f.hasWeapon || f.weaponBroken) return;
@@ -2580,8 +2592,8 @@ export class ArenaWorld {
       f.attackAnimDuration = 0.24;
       f.activeAttackTimer = 0.24;
       this.sound?.playSniperShot();
-      this.firePrismLaserRay(f, angle, 20);
-      this.screenShake = Math.max(this.screenShake, 4);
+      this.firePrismLaserRay(f, angle, 28);
+      this.screenShake = Math.max(this.screenShake, 6);
       f.laserTarget = null;
     } else if (type === 'HAMMER_SLAM') {
       if (!f.hasWeapon) return;
@@ -2593,30 +2605,30 @@ export class ArenaWorld {
       const impactX = clamp(f.x + f.facing * 72, ARENA_PADDING_X + 20, ARENA_WIDTH - ARENA_PADDING_X - 20);
       const impactY = ARENA_FLOOR_Y;
 
-      this.screenShake = isAnchor ? 12 : 15;
-      this.spawnBurstParticles(impactX, impactY - 6, isAnchor ? '#38bdf8' : '#fbbf24', 22, 270, 'spark');
-      this.spawnBurstParticles(impactX, impactY - 8, '#94a3b8', 14, 160, 'smoke');
+      this.screenShake = isAnchor ? 14 : 18;
+      this.spawnBurstParticles(impactX, impactY - 6, isAnchor ? '#38bdf8' : '#fbbf24', 26, 320, 'spark');
+      this.spawnBurstParticles(impactX, impactY - 8, '#94a3b8', 18, 200, 'smoke');
 
       // 1) Destroy ALL Obstacles in wide slam reach!
       for (let i = this.obstacles.length - 1; i >= 0; i--) {
         const obs = this.obstacles[i];
-        if (Math.abs(obs.x + obs.width * 0.5 - impactX) < 165) {
+        if (Math.abs(obs.x + obs.width * 0.5 - impactX) < 185) {
           this.shatterGlassObstacle(obs, f.facing);
           this.addLog(`SMASH! ${f.def.name} obliterated the barrier in a single swing!`, f.def.color, true);
         }
       }
 
-      this.hitClonesInReach(f.slot, impactX, f.y - 10, 110);
+      this.hitClonesInReach(f.slot, impactX, f.y - 10, 120);
 
       // 2) Direct Warhammer / Naval Anchor hit!
-      if (Math.hypot(enemy.x - impactX, enemy.y - (ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT)) < 104) {
+      if (Math.hypot(enemy.x - impactX, enemy.y - (ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT)) < 112) {
         if (!isAnchor && enemy.def.id === 'bulwark' && enemy.shieldIntegrity > 0) {
           enemy.shieldIntegrity = 0;
           enemy.shieldBlocking = false;
           enemy.hasWeapon = false;
           enemy.weaponBroken = true;
           enemy.panicMeter += 65;
-          this.spawnBurstParticles(enemy.x, enemy.y - 16, '#cbd5e1', 28, 340, 'shard');
+          this.spawnBurstParticles(enemy.x, enemy.y - 16, '#cbd5e1', 32, 380, 'shard');
           this.triggerEpicSlowMo(0.38);
           this.addLog(
             `CATACLYSM! Hammer shattered Bulwark's steel Tower Shield in one swing!`,
@@ -2626,8 +2638,8 @@ export class ArenaWorld {
         }
 
         if (enemy.def.id === 'rubber') {
-          enemy.vx = f.facing * 360;
-          enemy.vy = -380;
+          enemy.vx = f.facing * 420;
+          enemy.vy = -440;
           enemy.stretchScaleY = 0.88;
           enemy.stretchScaleX = 1.15;
           this.sound?.playBoing();
@@ -2636,9 +2648,9 @@ export class ArenaWorld {
           this.damageFighter(
             enemy,
             f.slot,
-            isAnchor ? 24 : 29,
-            kbDir * (isAnchor ? 320 : 380),
-            isAnchor ? -240 : -340,
+            isAnchor ? 34 : 38,
+            kbDir * (isAnchor ? 380 : 440),
+            isAnchor ? -280 : -380,
             'HAMMER_SEISMIC',
             isAnchor ? enemy.x - enemy.facing * 32 : f.x,
             f.blueFireCoated
@@ -2651,9 +2663,9 @@ export class ArenaWorld {
         ownerSlot: f.slot,
         x: impactX,
         y: ARENA_FLOOR_Y,
-        radius: 18,
-        maxRadius: isAnchor ? 275 : 310,
-        speed: 520,
+        radius: 20,
+        maxRadius: isAnchor ? 320 : 380,
+        speed: 620,
         color: isAnchor ? '#0284c7' : '#f59e0b',
         groundOnly: true,
         hitSlots: new Set<number>(),

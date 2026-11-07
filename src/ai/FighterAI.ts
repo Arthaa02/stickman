@@ -126,10 +126,6 @@ export class FighterAI {
       ) {
         cmd.specialAbility = true;
       }
-      if (me.grounded && me.evadeCooldown <= 0 && id !== 'anchor') {
-        cmd.jump = true;
-        me.evadeCooldown = 1.45;
-      }
       hazardEscapeDir =
         p.nearWallSide !== 0 ? (-p.nearWallSide as -1 | 1) : (p.horizDist > 220 ? p.dirToTarget : (-p.dirToTarget as -1 | 1));
     }
@@ -152,42 +148,21 @@ export class FighterAI {
         const dxW = p.retrievableWeapon.x - me.x;
         cmd.moveDir = dxW >= 0 ? 1 : -1;
         if (Math.abs(dxW) > 18) me.facing = cmd.moveDir;
-        if (Math.abs(dxW) > 90 && me.grounded && p.blockingObstacle && me.evadeCooldown <= 0) {
-          cmd.jump = true;
-          me.evadeCooldown = 1.4;
-        }
         if (p.incomingThreat && p.incomingThreat.isHighShot && me.grounded) {
           cmd.crouch = true;
         }
         return cmd;
       } else {
-        if (p.incomingThreat && me.evadeCooldown <= 0) {
-          if (p.incomingThreat.isHighShot && me.grounded) {
-            cmd.crouch = true;
-            me.evadeCooldown = 0.8;
-          } else if (me.grounded) {
-            cmd.jump = true;
-            me.evadeCooldown = 1.5;
-          }
-        }
-        if (p.horizDist > 52) {
+        if (p.horizDist > 48) {
           cmd.moveDir = p.dirToTarget;
-          if (p.blockingObstacle && me.grounded && me.evadeCooldown <= 0) {
-            cmd.jump = true;
-            me.evadeCooldown = 1.4;
-          }
         } else if (me.attackCooldown <= 0) {
           cmd.primaryAttack = true;
-          if (me.grounded && me.evadeCooldown <= 0 && Math.random() < 0.25) {
-            cmd.jump = true;
-            me.evadeCooldown = 1.8;
-          }
         }
         return cmd;
       }
     }
 
-    // 4. REACTIVE DEFENSE / PARRY / EVASION against Incoming Threats
+    // 4. REACTIVE DEFENSE / PARRY / COUNTER-STRIKE against Incoming Threats
     if (p.incomingThreat) {
       const id = me.def.id;
       if (Math.abs(p.targetPos.x - me.x) > 20) {
@@ -264,18 +239,21 @@ export class FighterAI {
         return cmd;
       }
 
-      // Grounded Matrix Crouch vs horizontal shots, or disciplined cooldown-gated Jump!
+      // High projectile shots can be ducked under
       if (p.incomingThreat.isHighShot && me.grounded && !p.incomingThreat.isStreamBarrage) {
         me.aiState = 'EVADING';
         cmd.crouch = true;
         return cmd;
-      } else if (me.evadeCooldown <= 0 && me.grounded && !p.incomingThreat.isStreamBarrage && id !== 'anchor') {
-        me.aiState = 'EVADING';
-        cmd.jump = true;
-        const preferredEscape = (-p.incomingThreat.fromDir) as -1 | 1;
-        cmd.moveDir =
-          p.nearWallSide === preferredEscape ? (-preferredEscape as -1 | 1) : preferredEscape;
-        me.evadeCooldown = 1.75;
+      }
+
+      // No useless jumping or running away! Retaliate with immediate offensive fury!
+      if (me.specialCooldown <= 0) {
+        me.aiState = 'ATTACKING';
+        cmd.specialAbility = true;
+        return cmd;
+      } else if (me.attackCooldown <= 0) {
+        me.aiState = 'ATTACKING';
+        cmd.primaryAttack = true;
         return cmd;
       }
     }
@@ -373,23 +351,19 @@ export class FighterAI {
       return cmd;
     }
 
-    // Rubber: Composed athletic brawler with long stretchy club whips & deliberate elastic lunge!
+    // Rubber: Athletic brawler with long stretchy club whips & explosive elastic lunge!
     if (id === 'rubber') {
       if (p.horizDist > maxR) {
         me.aiState = 'STALKING';
         cmd.moveDir = p.dirToTarget;
-      } else if (p.horizDist < minR * 0.75) {
-        me.aiState = 'EVADING';
-        cmd.moveDir =
-          p.nearWallSide === (-p.dirToTarget as -1 | 1) ? 0 : (-p.dirToTarget as -1 | 1);
       } else {
         me.aiState = 'ATTACKING';
-        cmd.moveDir = 0;
+        cmd.moveDir = p.horizDist > 55 ? p.dirToTarget : 0;
       }
 
-      if (me.specialCooldown <= 0 && p.horizDist > 115 && p.horizDist < 310) {
+      if (me.specialCooldown <= 0 && p.horizDist > 75) {
         cmd.specialAbility = true;
-      } else if (me.attackCooldown <= 0 && p.distToTarget < 155) {
+      } else if (me.attackCooldown <= 0 && p.distToTarget < 175) {
         cmd.primaryAttack = true;
       }
       if (hazardEscapeDir !== 0 && cmd.moveDir === 0) cmd.moveDir = hazardEscapeDir;
@@ -399,7 +373,7 @@ export class FighterAI {
     // Bulwark: Steady advancing fortress!
     if (id === 'bulwark' && me.shieldIntegrity > 0) {
       cmd.parryGuard = true;
-      if (p.horizDist > 75) {
+      if (p.horizDist > 65) {
         me.aiState = 'STALKING';
         cmd.moveDir = p.dirToTarget;
         if (p.blockingObstacle && me.grounded && p.horizDist < 120) {
@@ -413,7 +387,7 @@ export class FighterAI {
       return cmd;
     }
 
-    // Obstacle navigation or destruction for heavy / shredder / acoustic fighters
+    // Obstacle destruction for heavy / shredder / acoustic fighters
     if (p.blockingObstacle) {
       const obsDist = Math.abs(p.blockingObstacle.x + p.blockingObstacle.width * 0.5 - me.x);
       if (
@@ -438,112 +412,54 @@ export class FighterAI {
         me.aiState = 'ATTACKING';
         cmd.specialAbility = true;
         return cmd;
-      } else if (obsDist < 90 && me.grounded && id !== 'glass' && id !== 'earth' && me.evadeCooldown <= 0) {
-        cmd.jump = true;
-        cmd.moveDir = p.dirToTarget;
-        me.evadeCooldown = 1.6;
       }
     }
 
-    // Distance regulation (Stalking / Kiting / Poised Combat Stance)
+    // Direct Aggressive Combat Advance & Power Unleash
     if (p.horizDist > maxR) {
       me.aiState = 'STALKING';
       cmd.moveDir = p.dirToTarget;
 
-      // Gap-closing / pull specials for aggressive rushers & harvesters
-      if (
-        (id === 'long_sword' ||
-          id === 'thunder' ||
-          id === 'chainsaw' ||
-          id === 'spear' ||
-          id === 'shadow' ||
-          id === 'water' ||
-          id === 'scythe' ||
-          id === 'whip') &&
-        me.specialCooldown <= 0 &&
-        p.horizDist < 310 &&
-        (p.hasLineOfSight || id === 'shadow' || id === 'spear')
-      ) {
+      // Long-range power deployment & gap-closing strikes
+      if (me.specialCooldown <= 0) {
         me.aiState = 'ATTACKING';
         cmd.specialAbility = true;
         return cmd;
       }
-      // Spawners/Zoners can set traps from afar
       if (
-        (id === 'portal' ||
-          id === 'clone' ||
-          id === 'black_hole' ||
-          id === 'glass' ||
-          id === 'earth' ||
-          id === 'wind' ||
-          id === 'time') &&
-        me.specialCooldown <= 0
-      ) {
-        cmd.specialAbility = true;
-      }
-    } else if (p.horizDist < minR) {
-      me.aiState = 'EVADING';
-      const retreatDir = (-p.dirToTarget) as -1 | 1;
-      if (p.nearWallSide === retreatDir) {
-        if (me.grounded && me.evadeCooldown <= 0 && p.horizDist < 105 && id !== 'anchor') {
-          cmd.jump = true;
-          cmd.moveDir = p.dirToTarget;
-          me.evadeCooldown = 2.1;
-        } else {
-          cmd.moveDir = 0;
-        }
-      } else {
-        cmd.moveDir = retreatDir;
-      }
-
-      // Point-blank defensive specials or counter-fire
-      if (me.specialCooldown <= 0) {
-        if (
-          id === 'portal' ||
-          id === 'gravity' ||
-          id === 'ice' ||
-          id === 'blue_fire' ||
-          id === 'magnet' ||
-          id === 'glass' ||
-          id === 'sonic' ||
-          id === 'wind' ||
-          id === 'water' ||
-          id === 'yo_yo' ||
-          id === 'time' ||
-          id === 'alchemist' ||
-          id === 'boomerang' ||
-          id === 'earth'
-        ) {
-          cmd.specialAbility = true;
-        }
-      } else if (me.attackCooldown <= 0) {
-        cmd.primaryAttack = true;
-      }
-    } else {
-      // Inside Ideal Effective Combat Range
-      me.aiState = 'ATTACKING';
-      if (maxR <= 175 && p.horizDist > (minR + maxR) * 0.55) {
-        cmd.moveDir = p.dirToTarget;
-      } else {
-        cmd.moveDir = 0;
-      }
-
-      if (me.specialCooldown <= 0 && id !== 'portal') {
-        cmd.specialAbility = true;
-      } else if (id === 'portal' && me.specialCooldown <= 0 && p.horizDist > 220) {
-        cmd.specialAbility = true;
-      } else if (
         me.attackCooldown <= 0 &&
         (p.hasLineOfSight ||
-          maxR < 180 ||
+          id === 'sniper' ||
+          id === 'laser' ||
           id === 'rocket' ||
-          id === 'alchemist' ||
           id === 'boomerang' ||
-          id === 'sonic' ||
-          id === 'gravity' ||
-          id === 'portal')
+          id === 'alchemist' ||
+          id === 'earth')
       ) {
         cmd.primaryAttack = true;
+        return cmd;
+      }
+    } else {
+      // In combat engagement range (including point-blank) - FIRM COMBAT POISE!
+      me.aiState = 'ATTACKING';
+
+      // Melee rushers maintain pressure; casters/heavy fighters plant their feet
+      if (maxR <= 175 && p.horizDist > 55) {
+        cmd.moveDir = p.dirToTarget;
+      } else {
+        cmd.moveDir = 0; // Solid planted stance, zero aimless jitter
+      }
+
+      // Priority 1: Unleash devastating signature superpower whenever off cooldown!
+      if (me.specialCooldown <= 0) {
+        cmd.specialAbility = true;
+        return cmd;
+      }
+
+      // Priority 2: Relentless primary attacks!
+      if (me.attackCooldown <= 0) {
+        cmd.primaryAttack = true;
+        return cmd;
       }
     }
 
