@@ -410,5 +410,45 @@ export class SoundManager {
     gain.connect(this.masterGain);
     noise.start(this.ctx.currentTime);
   }
+
+  public playWeaponPickup(): void {
+    const ctx = this.ensureContext('pickup', 60);
+    if (!ctx || !this.masterGain) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const t = ctx.currentTime;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(440, t);
+    osc.frequency.exponentialRampToValueAtTime(880, t + 0.12);
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.12);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.13);
+  }
+
+  public announcerEnabled = true;
+  private lastAnnounceTime = 0;
+
+  public announce(phrase: string, rate = 1.12, pitch = 1.05): void {
+    if (!this.announcerEnabled || this.isMuted || this.suppressPlayback) return;
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+
+    const now = performance.now();
+    if (now - this.lastAnnounceTime < 750) return;
+    this.lastAnnounceTime = now;
+
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(phrase);
+      utterance.rate = rate;
+      utterance.pitch = pitch;
+      utterance.volume = Math.min(1, this.volume * 1.2);
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      // SpeechSynthesis safely ignored if permissions or synthesis offline
+    }
+  }
 }
 

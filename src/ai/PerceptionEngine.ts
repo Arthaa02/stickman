@@ -56,6 +56,12 @@ export interface PerceptionSnapshot {
   retrievableWeapon: DroppedWeapon | null;
   nearWallSide: -1 | 0 | 1;
   surrenderCheck: { trigger: boolean; quote: string } | null;
+  enemyVulnerable: boolean;
+  enemyWet: boolean;
+  enemyOnCeiling: boolean;
+  enemyInCorner: boolean;
+  looseMetalWeaponsCount: number;
+  glassObstacleForLaser: ArenaObstacle | null;
 }
 
 export class PerceptionEngine {
@@ -247,6 +253,35 @@ export class PerceptionEngine {
       incomingThreat
     );
 
+    // 8. Tactical Opportunity Scan (Vulnerability, Elemental Synergies, Refractions)
+    const enemyVulnerable =
+      realEnemy.freezeTimer > 0 ||
+      realEnemy.stunTimer > 0 ||
+      realEnemy.ragdollTimer > 0 ||
+      realEnemy.recoveryTimer > 0 ||
+      !realEnemy.hasWeapon ||
+      realEnemy.weaponBroken;
+
+    const enemyWet = realEnemy.wetTimer > 0;
+    const enemyOnCeiling = realEnemy.onCeiling || realEnemy.gravityScale < 0;
+    const enemyInCorner = realEnemy.x - ctx.arenaLeft < 95 || ctx.arenaRight - realEnemy.x < 95;
+
+    let looseMetalWeaponsCount = 0;
+    for (const dw of ctx.droppedWeapons) {
+      if (dw.isMetallic && !dw.broken) looseMetalWeaponsCount++;
+    }
+
+    let glassObstacleForLaser: ArenaObstacle | null = null;
+    for (const obs of ctx.obstacles) {
+      if (obs.kind === 'GLASS_WALL' || obs.kind === 'GLASS_PILLAR') {
+        const obsMidX = obs.x + obs.width * 0.5;
+        if ((obsMidX - me.x) * dirToTarget > 0 && Math.abs(obsMidX - me.x) < horizDist) {
+          glassObstacleForLaser = obs;
+          break;
+        }
+      }
+    }
+
     return {
       targetPos,
       targetVel,
@@ -267,6 +302,12 @@ export class PerceptionEngine {
       retrievableWeapon,
       nearWallSide,
       surrenderCheck,
+      enemyVulnerable,
+      enemyWet,
+      enemyOnCeiling,
+      enemyInCorner,
+      looseMetalWeaponsCount,
+      glassObstacleForLaser,
     };
   }
 

@@ -3,6 +3,7 @@ import {
   FighterRuntime,
   RagdollConstraint,
   RagdollNode,
+  SeveredLimb,
   StickmanSkeleton,
   Vec2,
 } from '../types/game';
@@ -305,6 +306,143 @@ export function stepVerletRagdoll(
   f.smoothFootR = { ...sk.footR };
 }
 
+export function createSeveredLimb(
+  id: number,
+  kind: 'HEAD' | 'ARM_L' | 'ARM_R' | 'LEG_L' | 'LEG_R',
+  sk: StickmanSkeleton,
+  color: string,
+  impulseX: number,
+  impulseY: number
+): SeveredLimb {
+  const dt = 1 / 60;
+  const nodes: RagdollNode[] = [];
+  const constraints: RagdollConstraint[] = [];
+
+  if (kind === 'HEAD') {
+    // 0: head, 1: neck
+    const h = { x: sk.head.x, y: sk.head.y, oldX: sk.head.x - impulseX * dt, oldY: sk.head.y - impulseY * dt };
+    const n = { x: sk.neck.x, y: sk.neck.y, oldX: sk.neck.x - impulseX * dt, oldY: sk.neck.y - impulseY * dt };
+    nodes.push(h, n);
+    constraints.push({ a: 0, b: 1, length: HEAD_RADIUS + 3 });
+  } else if (kind === 'ARM_L') {
+    const e = { x: sk.elbowL.x, y: sk.elbowL.y, oldX: sk.elbowL.x - impulseX * dt, oldY: sk.elbowL.y - impulseY * dt };
+    const h = { x: sk.handL.x, y: sk.handL.y, oldX: sk.handL.x - impulseX * dt, oldY: sk.handL.y - impulseY * dt };
+    nodes.push(e, h);
+    constraints.push({ a: 0, b: 1, length: LOWER_ARM });
+  } else if (kind === 'ARM_R') {
+    const e = { x: sk.elbowR.x, y: sk.elbowR.y, oldX: sk.elbowR.x - impulseX * dt, oldY: sk.elbowR.y - impulseY * dt };
+    const h = { x: sk.handR.x, y: sk.handR.y, oldX: sk.handR.x - impulseX * dt, oldY: sk.handR.y - impulseY * dt };
+    nodes.push(e, h);
+    constraints.push({ a: 0, b: 1, length: LOWER_ARM });
+  } else if (kind === 'LEG_L') {
+    const k = { x: sk.kneeL.x, y: sk.kneeL.y, oldX: sk.kneeL.x - impulseX * dt, oldY: sk.kneeL.y - impulseY * dt };
+    const f = { x: sk.footL.x, y: sk.footL.y, oldX: sk.footL.x - impulseX * dt, oldY: sk.footL.y - impulseY * dt };
+    nodes.push(k, f);
+    constraints.push({ a: 0, b: 1, length: SHIN_LEN });
+  } else {
+    const k = { x: sk.kneeR.x, y: sk.kneeR.y, oldX: sk.kneeR.x - impulseX * dt, oldY: sk.kneeR.y - impulseY * dt };
+    const f = { x: sk.footR.x, y: sk.footR.y, oldX: sk.footR.x - impulseX * dt, oldY: sk.footR.y - impulseY * dt };
+    nodes.push(k, f);
+    constraints.push({ a: 0, b: 1, length: SHIN_LEN });
+  }
+
+  return {
+    id,
+    kind,
+    nodes,
+    constraints,
+    color,
+    life: 3.5,
+    alpha: 1.0,
+  };
+}
+
+export function stepSeveredLimb(
+  limb: SeveredLimb,
+  dt: number,
+  arenaLeft: number,
+  arenaRight: number,
+  arenaTop: number,
+  floorY: number,
+  gravityAccel: number
+): void {
+  limb.life -= dt;
+  if (limb.life < 1.0) {
+    limb.alpha = Math.max(0, limb.life);
+  }
+  const damping = 0.96;
+  const bounce = 0.28;
+
+  for (const n of limb.nodes) {
+    const vx = (n.x - n.oldX) * damping;
+    const vy = (n.y - n.oldY) * damping;
+    n.oldX = n.x;
+    n.oldY = n.y;
+    n.x += vx;
+    n.y += vy + gravityAccel * dt * dt;
+  }
+
+  for (let iter = 0; iter < 4; iter++) {
+    for (const c of limb.constraints) {
+      const na = limb.nodes[c.a];
+      const nb = limb.nodes[c.b];
+      const dx = nb.x - na.x;
+      const dy = nb.y - na.y;
+      const d = Math.hypot(dx, dy) || 0.001;
+      const diff = ((c.length - d) / d) * 0.5;
+      na.x -= dx * diff;
+      na.y -= dy * diff;
+      nb.x += dx * diff;
+      nb.y += dy * diff;
+    }
+
+    for (const n of limb.nodes) {
+      if (n.x < arenaLeft + 4) {
+        const vx = n.x - n.oldX;
+        n.x = arenaLeft + 4;
+        n.oldX = n.x + vx * bounce;
+      } else if (n.x > arenaRight - 4) {
+        const vx = n.x - n.oldX;
+        n.x = arenaRight - 4;
+        n.oldX = n.x + vx * bounce;
+      }
+      if (n.y < arenaTop + 4) {
+        const vy = n.y - n.oldY;
+        n.y = arenaTop + 4;
+        n.oldY = n.y + vy * bounce;
+      } else if (n.y > floorY - 4) {
+        const vy = n.y - n.oldY;
+        const vx = n.x - n.oldX;
+        n.y = floorY - 4;
+        n.oldY = n.y + vy * bounce;
+        n.oldX = n.x - vx * 0.8;
+      }
+    }
+  }
+}
+
+export function blendSkeletonPose(from: StickmanSkeleton, to: StickmanSkeleton, t: number): StickmanSkeleton {
+  const b = (p1: Vec2, p2: Vec2) => ({
+    x: lerp(p1.x, p2.x, t),
+    y: lerp(p1.y, p2.y, t),
+  });
+  return {
+    head: b(from.head, to.head),
+    neck: b(from.neck, to.neck),
+    pelvis: b(from.pelvis, to.pelvis),
+    elbowL: b(from.elbowL, to.elbowL),
+    handL: b(from.handL, to.handL),
+    elbowR: b(from.elbowR, to.elbowR),
+    handR: b(from.handR, to.handR),
+    kneeL: b(from.kneeL, to.kneeL),
+    footL: b(from.footL, to.footL),
+    kneeR: b(from.kneeR, to.kneeR),
+    footR: b(from.footR, to.footR),
+    ragdollNodes: from.ragdollNodes,
+    ragdollConstraints: from.ragdollConstraints,
+  };
+}
+
 /**
  * Updates fluid, spring-interpolated 2-Bone IK stickman pose & weapon angle.
  * Anatomically accurate forward-hinged knees, gravity-hung elbows, zero-moonwalk blended stride,
@@ -361,9 +499,11 @@ export function updateProceduralIKSkeleton(
     f.hipBob = lerp(f.hipBob, 0, poseSmooth);
   }
 
-  // Deep crouch dodge (like 00:01 in video!) or 10G Gravity Crush
+  // Deep crouch dodge (like 00:01 in video!), 10G Gravity Crush, or Active Get-Up Recovery!
   const isCrushed = f.gravityScale > 3;
-  const targetCrouchDrop = isCrushed ? 26 : f.crouching ? 30 : 0;
+  const isRecovering = f.recoveryTimer > 0;
+  const recoveryDrop = isRecovering ? (f.recoveryTimer / 0.38) * 32 : 0;
+  const targetCrouchDrop = isCrushed ? 26 : f.crouching ? 30 : recoveryDrop;
 
   // Pelvis anchor with stride hip-bob
   const targetPelvisY = f.y + (targetCrouchDrop + f.hipBob) * verticalSign;
@@ -740,6 +880,14 @@ export function updateProceduralIKSkeleton(
       x: sk.neck.x + dir * 9,
       y: sk.neck.y + 30 * verticalSign,
     };
+  }
+
+  // Active Get-Up Recovery: both hands planted firmly on the floor to push body up
+  if (f.recoveryTimer > 0) {
+    const handY = floorY - 4;
+    rawHandL = { x: sk.pelvis.x - dir * 16, y: handY };
+    rawHandR = { x: sk.pelvis.x + dir * 14, y: handY };
+    desiredWeaponAngle = dir === 1 ? -0.3 : Math.PI + 0.3;
   }
 
   // Smoothly interpolate effector targets & weapon angle (with warp-snap safety!)

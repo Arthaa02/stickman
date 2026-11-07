@@ -15,10 +15,15 @@ import {
   Particle,
   PortalPair,
   Projectile,
+  ReplayFrame,
+  SeveredLimb,
   ShadowClone,
   Shockwave,
   SingularityOrb,
   SlashTrail,
+  StagePlatform,
+  StageTheme,
+  StuckProjectile,
   Vec2,
 } from '../types/game';
 import { clamp, normalize, pointToSegmentDist, segmentIntersectsAABB, solveTwoBoneIK } from './math';
@@ -30,7 +35,9 @@ import {
   UPPER_ARM,
   cloneSkeletonPose,
   createInitialSkeleton,
+  createSeveredLimb,
   shiftFighterSkeleton,
+  stepSeveredLimb,
   stepVerletRagdoll,
   syncRagdollFromActivePose,
   updateProceduralIKSkeleton,
@@ -58,6 +65,15 @@ export class ArenaWorld {
   public laserTracers: LaserTracer[] = [];
   public particles: Particle[] = [];
   public logs: CombatLogEntry[] = [];
+  public severedLimbs: SeveredLimb[] = [];
+  public stageTheme: StageTheme = 'CLASSIC_WHITE';
+  public platforms: StagePlatform[] = [];
+
+  // Instant Replay ring-buffer
+  public replayFrames: ReplayFrame[] = [];
+  public isReplaying = false;
+  public replayPlaybackIndex = 0;
+  public replayComplete = false;
 
   public roundBannerTitle: string;
   public elapsedSec = 0;
@@ -91,7 +107,8 @@ export class ArenaWorld {
     fighterAId: FighterId,
     fighterBId: FighterId,
     bannerTitle = 'CUSTOM DUEL',
-    sound: SoundManager | null = null
+    sound: SoundManager | null = null,
+    stageTheme: StageTheme = 'CLASSIC_WHITE'
   ) {
     this.roundBannerTitle = bannerTitle;
     this.sound = sound;
@@ -99,10 +116,29 @@ export class ArenaWorld {
       this.createFighterRuntime(0, fighterAId, ARENA_PADDING_X + 150, 1),
       this.createFighterRuntime(1, fighterBId, ARENA_WIDTH - ARENA_PADDING_X - 150, -1),
     ];
+    this.setStageTheme(stageTheme);
     this.addLog(
       `Match ready: ${this.fighters[0].def.name} vs ${this.fighters[1].def.name}!`,
       '#94a3b8'
     );
+  }
+
+  public setStageTheme(theme: StageTheme): void {
+    this.stageTheme = theme;
+    this.platforms = [];
+    if (theme === 'PLATFORMS') {
+      this.platforms.push(
+        { x: ARENA_PADDING_X + 110, y: ARENA_FLOOR_Y - 135, width: 210, height: 14 },
+        { x: ARENA_WIDTH - ARENA_PADDING_X - 320, y: ARENA_FLOOR_Y - 135, width: 210, height: 14 },
+        { x: ARENA_WIDTH * 0.5 - 110, y: ARENA_FLOOR_Y - 250, width: 220, height: 14 }
+      );
+    } else if (theme === 'HAZARDS') {
+      this.platforms.push(
+        { x: ARENA_WIDTH * 0.5 - 80, y: ARENA_FLOOR_Y - 12, width: 160, height: 14, bouncy: true },
+        { x: ARENA_PADDING_X, y: ARENA_TOP + 90, width: 18, height: 260, spike: true },
+        { x: ARENA_WIDTH - ARENA_PADDING_X - 18, y: ARENA_TOP + 90, width: 18, height: 260, spike: true }
+      );
+    }
   }
 
   private createFighterRuntime(
@@ -191,6 +227,10 @@ export class ArenaWorld {
       stretchScaleY: 1,
       skeleton: sk,
       afterimages: [],
+      stuckProjectiles: [],
+      recoveryTimer: 0,
+      wetTimer: 0,
+      dismemberedBones: new Set<number>(),
       panicMeter: 0,
       surrendered: false,
       surrenderTimer: 0,
@@ -203,6 +243,7 @@ export class ArenaWorld {
     this.isRunning = true;
     this.isPaused = false;
     this.sound?.playRefereeWhistle();
+    this.sound?.announce('Round one, fight!');
     this.addLog('FIGHT! Arena simulation started.', '#22c55e', true);
   }
 
@@ -299,6 +340,14 @@ export class ArenaWorld {
   }
 
   public step(rawDt: number): void {
+    // 0. Handle Instant Replay Playback (operates even post-match when user clicks Watch Replay!)
+    if (this.isReplaying) {
+      if (!this.isPaused) {
+        this.stepInstantReplay(rawDt);
+      }
+      return;
+    }
+
     if (!this.isRunning || this.isPaused || this.result) return;
 
     // Smoothly eased time dilation (glides toward 0.52x and eases back to 1.0x without jarring snaps!)
@@ -312,6 +361,9 @@ export class ArenaWorld {
 
     this.elapsedSec += dt;
     this.screenShake = Math.max(0, this.screenShake - rawDt * 30);
+
+    // Record high-fidelity replay frame
+    this.recordReplayFrame();
 
     // Check match time limit
     if (this.elapsedSec >= this.maxMatchDurationSec && this.pendingWinnerSlot === null) {
@@ -332,6 +384,7 @@ export class ArenaWorld {
       }
       this.updateObstacles(dt);
       this.updateDroppedWeapons(dt);
+      this.updateSeveredLimbs(dt);
       this.updateParticlesAndTrails(dt);
       for (const f of this.fighters) {
         f.smoothHp += (f.hp - f.smoothHp) * Math.min(1, rawDt * 16);
@@ -412,6 +465,7 @@ export class ArenaWorld {
     this.updateProjectiles(dt);
     this.updateGlassShards(dt);
     this.updateShockwaves(dt);
+    this.updateSeveredLimbs(dt);
     this.updateFightersPhysics(dt);
     this.updateParticlesAndTrails(dt);
 
@@ -429,15 +483,18 @@ export class ArenaWorld {
         winner.aiState = 'VICTORY';
         this.pendingWinnerSlot = winnerSlot;
         this.pendingWinReason = 'KO';
-        this.refereeCountdown = 1.15;
-        this.screenShake = 14;
-        this.triggerEpicSlowMo(0.42);
+        this.refereeCountdown = 1.35;
+        this.screenShake = 16;
+        this.triggerEpicSlowMo(0.48);
+        this.triggerOverkillDismemberment(f, winner);
         this.spawnBurstParticles(f.x, f.y - 12, f.def.color, 26, 290, 'spark');
         this.addLog(
           `KNOCKOUT! ${winner.def.name} defeats ${f.def.name}!`,
           winner.def.color,
           true
         );
+        this.sound?.announce(`Knockout! ${winner.def.name} wins!`);
+        this.startInstantReplay();
         break;
       }
     }
@@ -452,6 +509,7 @@ export class ArenaWorld {
     const loserSlot: 0 | 1 = winnerSlot === 0 ? 1 : 0;
     this.fighters[winnerSlot].aiState = 'VICTORY';
     this.fighters[loserSlot].aiState = 'DEFEATED';
+    this.sound?.announce(`Time up! ${this.fighters[winnerSlot].def.name} wins by decision!`);
     this.result = {
       winnerSlot,
       winnerId: this.fighters[winnerSlot].def.id,
@@ -484,11 +542,12 @@ export class ArenaWorld {
       this.dropFighterWeapon(loser, loser.facing * 55, -90, loser.weaponBroken);
     }
 
-    this.sound?.playSurrenderWhistle();
-    this.setSpeech(loser, quote, 'surrender', 1.55);
-
     const winnerSlot: 0 | 1 = loser.slot === 0 ? 1 : 0;
     const winner = this.fighters[winnerSlot];
+
+    this.sound?.playSurrenderWhistle();
+    this.sound?.announce(`${winner.def.name} wins by surrender!`);
+    this.setSpeech(loser, quote, 'surrender', 1.55);
     winner.aiState = 'VICTORY';
     winner.windupTimer = 0;
     winner.spinDeflectTimer = 0;
@@ -809,36 +868,41 @@ export class ArenaWorld {
       }
 
       case 'magnet': {
-        // Throw orbiting loose metallic weapon if one is nearby, else fire magnetic bolt!
+        // Ferromagnetic Throw: Pull ANY metallic weapon within 380px radius and fling it across the arena!
         f.attackStyle = 'THRUST';
         f.attackAnimDuration = 0.28;
         f.activeAttackTimer = 0.28;
         const loose = this.droppedWeapons.find(
-          (w) => w.isMetallic && Math.hypot(w.x - f.x, w.y - f.y) < 105
+          (w) => w.isMetallic && Math.hypot(w.x - f.x, w.y - f.y) < 380
         );
         if (loose) {
           const idx = this.droppedWeapons.indexOf(loose);
           if (idx >= 0) this.droppedWeapons.splice(idx, 1);
           const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 26));
           this.sound?.playSlash();
+          this.spawnBurstParticles(loose.x, loose.y, '#ec4899', 10, 180, 'spark');
           this.spawnProjectile({
             ownerSlot: f.slot,
             kind: 'THROWN_WEAPON',
             x: f.x + f.facing * 28,
             y: f.y - 26,
-            vx: dir.x * 650,
-            vy: dir.y * 650,
+            vx: dir.x * 720,
+            vy: dir.y * 720,
             radius: 12,
             damage: 22,
             knockback: 290,
             isMetallic: true,
             blueFireCoated: loose.blueFireCoated,
             gravity: 120,
-            life: 1.8,
-            color: '#db2777',
+            life: 2.2,
+            color: '#ec4899',
             weaponDefId: loose.fighterId,
           });
-          this.addLog(`Magnet magnetically hurled ${FIGHTER_MAP[loose.fighterId].name}'s weapon!`, f.def.color);
+          this.addLog(
+            `MAGNETIC LAUNCH! Magnet hurled ${FIGHTER_MAP[loose.fighterId].name}'s weapon across the arena!`,
+            f.def.color,
+            true
+          );
         } else {
           const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 26));
           this.spawnProjectile({
@@ -2874,6 +2938,15 @@ export class ArenaWorld {
       this.addLog(`${victim.def.name}'s ice block shattered from the impact!`, '#38bdf8');
     }
 
+    // Superconductive Wet + Electric Synergy (+60% damage & prolonged electro-stun!)
+    if (damageKind === 'ELECTRIC' && victim.wetTimer > 0) {
+      finalDamage *= 1.6;
+      this.applyElectroStun(victim, 1.1);
+      this.sound?.playElectroZap();
+      this.spawnBurstParticles(victim.x, victim.y - 20, '#facc15', 18, 250, 'spark');
+      this.addLog(`SUPERCONDUCTIVE SHOCK! Wet ${victim.def.name} suffered +60% electro burst!`, '#facc15', true);
+    }
+
     victim.hp = Math.max(0, victim.hp - finalDamage);
     victim.hitstunTimer = Math.max(victim.hitstunTimer, 0.14);
     victim.invulnTimer = Math.max(victim.invulnTimer, damageKind === 'FIRE' ? 0.2 : 0.08);
@@ -2985,6 +3058,176 @@ export class ArenaWorld {
       broken: true,
       blueFireCoated: f.blueFireCoated,
       pickupDelay: 99,
+    });
+  }
+
+  public attachStuckProjectile(target: FighterRuntime, p: Projectile): void {
+    if (target.stuckProjectiles.length >= 6) return;
+    const sk = target.skeleton;
+    const pts = [
+      sk.head,
+      sk.neck,
+      sk.pelvis,
+      sk.elbowL,
+      sk.handL,
+      sk.elbowR,
+      sk.handR,
+      sk.kneeL,
+      sk.footL,
+      sk.kneeR,
+      sk.footR,
+    ];
+    let bestIdx = 2;
+    let bestDist = 9999;
+    for (let i = 0; i < pts.length; i++) {
+      const d = Math.hypot(pts[i].x - p.x, pts[i].y - p.y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    const chosen = pts[bestIdx];
+    target.stuckProjectiles.push({
+      id: this.nextEntityId++,
+      nodeIndex: bestIdx,
+      offsetX: p.x - chosen.x,
+      offsetY: p.y - chosen.y,
+      angle: Math.atan2(p.vy, p.vx),
+      kind: p.kind,
+      color: p.color,
+    });
+  }
+
+  private triggerOverkillDismemberment(loser: FighterRuntime, winner: FighterRuntime): void {
+    const overkillIds = new Set([
+      'chainsaw',
+      'scythe',
+      'laser',
+      'black_hole',
+      'hammer',
+      'rocket',
+      'long_sword',
+      'spear',
+    ]);
+    if (!overkillIds.has(winner.def.id)) return;
+
+    const kinds: Array<'HEAD' | 'ARM_L' | 'ARM_R' | 'LEG_R'> =
+      winner.def.id === 'chainsaw' || winner.def.id === 'scythe' || winner.def.id === 'laser'
+        ? ['HEAD', 'ARM_R']
+        : ['ARM_L', 'LEG_R'];
+
+    const chosen = kinds[Math.floor(Math.random() * kinds.length)];
+    const dir = winner.x < loser.x ? 1 : -1;
+    const impulseX = dir * (260 + Math.random() * 200);
+    const impulseY = -360 - Math.random() * 180;
+
+    if (chosen === 'HEAD') {
+      loser.dismemberedBones.add(0);
+    } else if (chosen === 'ARM_L') {
+      loser.dismemberedBones.add(3);
+      loser.dismemberedBones.add(4);
+    } else if (chosen === 'ARM_R') {
+      loser.dismemberedBones.add(5);
+      loser.dismemberedBones.add(6);
+    } else {
+      loser.dismemberedBones.add(9);
+      loser.dismemberedBones.add(10);
+    }
+
+    const limb = createSeveredLimb(
+      this.nextEntityId++,
+      chosen,
+      loser.skeleton,
+      loser.def.color,
+      impulseX,
+      impulseY
+    );
+    this.severedLimbs.push(limb);
+    this.screenShake = Math.max(this.screenShake, 16);
+    this.sound?.playWeaponClash();
+    this.spawnBurstParticles(loser.x, loser.y - 24, loser.def.color, 18, 260, 'spark');
+    this.addLog(
+      `OVERKILL! ${winner.def.name}'s finishing strike severed ${loser.def.name}'s ${chosen.toLowerCase()}!`,
+      winner.def.color,
+      true
+    );
+  }
+
+  private updateSeveredLimbs(dt: number): void {
+    for (let i = this.severedLimbs.length - 1; i >= 0; i--) {
+      const limb = this.severedLimbs[i];
+      stepSeveredLimb(
+        limb,
+        dt,
+        ARENA_PADDING_X,
+        ARENA_WIDTH - ARENA_PADDING_X,
+        ARENA_TOP,
+        ARENA_FLOOR_Y,
+        GRAVITY_ACCEL
+      );
+      if (limb.life <= 0) {
+        this.severedLimbs.splice(i, 1);
+      }
+    }
+  }
+
+  public startInstantReplay(): void {
+    if (this.replayFrames.length < 24) return;
+    this.isReplaying = true;
+    this.replayPlaybackIndex = Math.max(0, this.replayFrames.length - 120);
+    this.addLog('🎬 INSTANT REPLAY: Reliving the decisive knockout blow!', '#38bdf8', true);
+  }
+
+  public stopInstantReplay(): void {
+    this.isReplaying = false;
+  }
+
+  public stepInstantReplay(rawDt: number): void {
+    // 0.45x slow-motion cinematic replay of final knockout
+    const step = Math.max(1, Math.round(rawDt * 60 * 0.45));
+    this.replayPlaybackIndex += step;
+    if (this.replayPlaybackIndex >= this.replayFrames.length - 1) {
+      this.isReplaying = false;
+      this.replayComplete = true;
+    }
+  }
+
+  private recordReplayFrame(): void {
+    if (this.replayFrames.length > 180) {
+      this.replayFrames.shift();
+    }
+    this.replayFrames.push({
+      timeSec: this.elapsedSec,
+      fighters: this.fighters.map((f) => ({
+        slot: f.slot,
+        x: f.x,
+        y: f.y,
+        hp: f.hp,
+        facing: f.facing,
+        skeleton: cloneSkeletonPose(f.skeleton),
+        color: f.def.color,
+        hasWeapon: f.hasWeapon,
+        speechText: f.speech?.text || null,
+        stuckProjectiles: f.stuckProjectiles.map((p) => ({ ...p })),
+      })),
+      projectiles: this.projectiles.map((p) => ({
+        x: p.x,
+        y: p.y,
+        kind: p.kind,
+        color: p.color,
+        radius: p.radius,
+      })),
+      particles: this.particles.slice(0, 30).map((pt) => ({
+        x: pt.x,
+        y: pt.y,
+        size: pt.size,
+        color: pt.color,
+        shape: pt.shape,
+        alpha: pt.alpha,
+      })),
+      laserTracers: this.laserTracers.map((lt) => ({ ...lt })),
+      slashTrails: this.slashTrails.map((st) => ({ ...st, points: [...st.points] })),
+      screenShake: this.screenShake,
     });
   }
 
@@ -3401,14 +3644,34 @@ export class ArenaWorld {
           );
 
           if (dealt) {
-            if (p.kind === 'ICE_SHARD') {
-              this.inflictFrost(target, 55);
+            if (p.kind === 'WATER_JET') {
+              target.wetTimer = 4.0;
+              this.spawnBurstParticles(target.x, target.y - 20, '#38bdf8', 12, 160, 'spark');
+              this.addLog(`${target.def.name} is drenched in water!`, '#38bdf8');
+            } else if (p.kind === 'ICE_SHARD') {
+              if (target.wetTimer > 0) {
+                this.inflictFrost(target, 100);
+                this.addLog(`FLASH FREEZE! Wet ${target.def.name} was frozen solid!`, '#38bdf8', true);
+              } else {
+                this.inflictFrost(target, 55);
+              }
             } else if (p.kind === 'VENOM_GLOB') {
               target.poisonTimer = Math.max(target.poisonTimer, 3.2);
               this.spawnBurstParticles(target.x, target.y - 22, '#84cc16', 10, 140, 'spark');
             } else if (p.kind === 'CHRONO_BOLT') {
               target.chronoSlowTimer = Math.max(target.chronoSlowTimer, 2.0);
               this.spawnBurstParticles(target.x, target.y - 22, '#eab308', 10, 140, 'ring');
+            }
+
+            // Attach stuck projectile into ragdoll skeleton bone
+            if (
+              p.kind === 'SNIPER_BULLET' ||
+              p.kind === 'ICE_SHARD' ||
+              p.kind === 'GLASS_DAGGER' ||
+              p.kind === 'VENOM_GLOB' ||
+              p.kind === 'MAGNET_BOLT'
+            ) {
+              this.attachStuckProjectile(target, p);
             }
           }
 
@@ -3675,21 +3938,48 @@ export class ArenaWorld {
           z.x = ARENA_WIDTH - ARENA_PADDING_X - z.width - 12;
           z.vx = -Math.abs(z.vx || 130);
         }
-        // Moving cyclone sweeps out enemy Blue Fire along the floor!
-        this.extinguishEnemyFireZones(z.x + z.width * 0.5, z.width * 0.6, z.ownerSlot, false);
-        if (Math.random() < 0.65) {
-          this.particles.push({
-            x: z.x + Math.random() * z.width,
-            y: ARENA_FLOOR_Y - 12 - Math.random() * 90,
-            vx: (Math.random() - 0.5) * 95,
-            vy: -75 - Math.random() * 65,
-            size: 4,
-            color: '#5eead4',
-            alpha: 0.65,
-            decay: 2.5,
-            gravity: -20,
-            shape: 'smoke',
-          });
+
+        // Elemental Fusion: Tornado absorbs Blue Fire into a roaring Fire Vortex!
+        for (const fz of this.floorZones) {
+          if (fz.kind === 'BLUE_FIRE' && fz.x < z.x + z.width && fz.x + fz.width > z.x) {
+            if (!z.isFireTornado) {
+              z.isFireTornado = true;
+              this.addLog(`ELEMENTAL FUSION! Tornado absorbed Blue Fire into a BLAZING FIRE VORTEX!`, '#38bdf8', true);
+            }
+          }
+        }
+
+        if (z.isFireTornado) {
+          if (Math.random() < 0.75) {
+            this.particles.push({
+              x: z.x + Math.random() * z.width,
+              y: ARENA_FLOOR_Y - 12 - Math.random() * 120,
+              vx: (Math.random() - 0.5) * 80,
+              vy: -95 - Math.random() * 85,
+              size: 5.5,
+              color: Math.random() < 0.5 ? '#38bdf8' : '#f97316',
+              alpha: 0.85,
+              decay: 2.5,
+              gravity: -20,
+              shape: 'flame',
+            });
+          }
+        } else {
+          this.extinguishEnemyFireZones(z.x + z.width * 0.5, z.width * 0.6, z.ownerSlot, false);
+          if (Math.random() < 0.65) {
+            this.particles.push({
+              x: z.x + Math.random() * z.width,
+              y: ARENA_FLOOR_Y - 12 - Math.random() * 90,
+              vx: (Math.random() - 0.5) * 95,
+              vy: -75 - Math.random() * 65,
+              size: 4,
+              color: '#5eead4',
+              alpha: 0.65,
+              decay: 2.5,
+              gravity: -20,
+              shape: 'smoke',
+            });
+          }
         }
       } else if (z.kind === 'BLUE_FIRE' && Math.random() < 0.65) {
         this.particles.push({
@@ -3879,23 +4169,26 @@ export class ArenaWorld {
         }
       }
 
-      // Disarmed original owner runs over to pick up intact weapon!
+      // Disarmed fighters run over to pick up intact weapon!
       if (!dw.broken && dw.pickupDelay <= 0) {
-        const owner = this.fighters[dw.originalOwnerSlot];
-        if (
-          !owner.hasWeapon &&
-          !owner.surrendered &&
-          owner.aiState !== 'DEFEATED' &&
-          Math.hypot(owner.x - dw.x, owner.y + 32 - dw.y) < 54
-        ) {
-          owner.hasWeapon = true;
-          owner.blueFireCoated = owner.blueFireCoated || dw.blueFireCoated;
-          owner.aiState = 'STALKING';
-          this.addLog(
-            `${owner.def.name} recovered their ${dw.blueFireCoated ? 'Blue-Flame coated ' : ''}weapon!`,
-            owner.def.color
-          );
-          this.droppedWeapons.splice(i, 1);
+        for (const f of this.fighters) {
+          if (
+            !f.hasWeapon &&
+            !f.surrendered &&
+            f.aiState !== 'DEFEATED' &&
+            Math.hypot(f.x - dw.x, f.y + 32 - dw.y) < 54
+          ) {
+            f.hasWeapon = true;
+            f.blueFireCoated = f.blueFireCoated || dw.blueFireCoated;
+            f.aiState = 'STALKING';
+            this.sound?.playWeaponClash();
+            this.addLog(
+              `${f.def.name} retrieved a ${dw.blueFireCoated ? 'Blue-Flame coated ' : ''}${FIGHTER_MAP[dw.fighterId].weaponType}!`,
+              f.def.color
+            );
+            this.droppedWeapons.splice(i, 1);
+            break;
+          }
         }
       }
     }
@@ -4265,6 +4558,8 @@ export class ArenaWorld {
 
       // Floor Zone Interactions (Blue Fire, Ice Sheet, Gravity Crush, Acid Pool, Tornado, Chrono Field!)
       f.slipTimer = Math.max(0, f.slipTimer - dt);
+      if (f.recoveryTimer > 0) f.recoveryTimer = Math.max(0, f.recoveryTimer - dt);
+      if (f.wetTimer > 0) f.wetTimer = Math.max(0, f.wetTimer - dt);
       for (const z of this.floorZones) {
         const inX = f.x >= z.x && f.x <= z.x + z.width;
         const nearFloor = Math.abs(f.y - (ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT)) < 34;
@@ -4275,6 +4570,10 @@ export class ArenaWorld {
             f.vx += (z.x + z.width * 0.5 - f.x) * 4.5 * dt;
             f.grounded = false;
             f.shieldBlocking = false;
+            if (z.isFireTornado) {
+              f.burnTimer = Math.max(f.burnTimer, 2.0);
+              f.hp = Math.max(1, f.hp - 8 * dt);
+            }
           }
           continue;
         }
@@ -4360,6 +4659,7 @@ export class ArenaWorld {
           this.obstacles
         );
         if (f.ragdollTimer <= 0 && f.hp > 0) {
+          f.recoveryTimer = 0.38; // Begin active get-up recovery
           f.y = Math.min(f.y, ARENA_FLOOR_Y - STAND_PELVIS_HEIGHT);
           updateProceduralIKSkeleton(
             f,
@@ -4447,6 +4747,43 @@ export class ArenaWorld {
             } else {
               f.x = obs.x + obs.width + halfW;
               f.vx = f.def.id === 'rubber' && !f.grounded ? Math.abs(f.vx) * 0.65 : 0;
+            }
+          }
+        }
+      }
+
+      // Collide horizontally & vertically with Stage Floating Platforms & Hazards
+      for (const plat of this.platforms) {
+        const halfW = 14;
+        if (
+          f.x + halfW > plat.x &&
+          f.x - halfW < plat.x + plat.width &&
+          f.y + STAND_PELVIS_HEIGHT > plat.y &&
+          f.y - 48 < plat.y + plat.height
+        ) {
+          if (plat.spike) {
+            // Lethal spike wall damage & rebound
+            if (f.invulnTimer <= 0) {
+              const spikeDir = f.x < plat.x + plat.width * 0.5 ? -1 : 1;
+              this.damageFighter(f, (f.slot === 0 ? 1 : 0), 14, spikeDir * 320, -160, 'PIERCE', plat.x);
+              this.spawnBurstParticles(f.x, f.y - 20, '#ef4444', 14, 220, 'spark');
+              this.addLog(`${f.def.name} slammed into lethal arena spikes!`, '#ef4444', true);
+            }
+          } else if (plat.bouncy) {
+            // Bouncy launch pad!
+            f.vy = -680;
+            f.grounded = false;
+            f.stretchScaleY = 1.25;
+            f.stretchScaleX = 0.85;
+            this.sound?.playBoing();
+            this.spawnBurstParticles(f.x, plat.y, '#f472b6', 8, 160, 'ring');
+          } else {
+            // Solid floating platform
+            const penTop = f.y + STAND_PELVIS_HEIGHT - plat.y;
+            if (penTop < 22 && f.vy >= 0) {
+              f.y = plat.y - STAND_PELVIS_HEIGHT;
+              f.vy = f.def.id === 'rubber' && f.vy > 360 ? -Math.abs(f.vy) * 0.45 : 0;
+              f.grounded = Math.abs(f.vy) < 40;
             }
           }
         }

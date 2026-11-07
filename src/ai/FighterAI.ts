@@ -280,10 +280,91 @@ export class FighterAI {
       }
     }
 
+    // 4B. RUTHLESS EXPLOITATION of Vulnerable Opponents (Stunned, Frozen, Ragdolled, Get-Up Recovery, or Disarmed)
+    if (p.enemyVulnerable && !p.incomingThreat) {
+      me.aiState = 'ATTACKING';
+      const id = me.def.id;
+
+      // Close the distance rapidly
+      if (p.horizDist > 65) {
+        cmd.moveDir = p.dirToTarget;
+      } else {
+        cmd.moveDir = 0;
+      }
+
+      // Execute with highest-damage special or devastating shatter/slam!
+      if (me.specialCooldown <= 0) {
+        if (
+          id === 'hammer' ||
+          id === 'anchor' ||
+          id === 'long_sword' ||
+          id === 'thunder' ||
+          id === 'chainsaw' ||
+          id === 'spear' ||
+          id === 'scythe' ||
+          id === 'sonic' ||
+          id === 'ice' ||
+          id === 'laser' ||
+          id === 'rocket'
+        ) {
+          cmd.specialAbility = true;
+          return cmd;
+        }
+      }
+
+      // Relentless primary attack spam on defenseless target
+      if (me.attackCooldown <= 0 && (p.horizDist < 165 || p.hasLineOfSight)) {
+        cmd.primaryAttack = true;
+        return cmd;
+      }
+
+      return cmd;
+    }
+
     // 5. ARCHETYPE-SPECIFIC STALKING & COMBAT TACTICS
     const id = me.def.id;
     const minR = me.def.idealRangeMin;
     const maxR = me.def.idealRangeMax;
+
+    // Laser: Exploit Glass Crystal Prism Refraction to hit enemies hiding behind cover!
+    if (id === 'laser' && p.glassObstacleForLaser && !p.hasLineOfSight && me.attackCooldown <= 0) {
+      me.aiState = 'ATTACKING';
+      cmd.primaryAttack = true;
+      return cmd;
+    }
+
+    // Thunder & Ice: Prioritize lethal elemental synergy against Wet foes!
+    if (p.enemyWet) {
+      if (id === 'thunder') {
+        me.aiState = 'ATTACKING';
+        cmd.moveDir = p.dirToTarget;
+        if (me.specialCooldown <= 0 && p.horizDist < 290) {
+          cmd.specialAbility = true;
+          return cmd;
+        } else if (me.attackCooldown <= 0 && p.horizDist < 120) {
+          cmd.primaryAttack = true;
+          return cmd;
+        }
+      } else if (id === 'ice' && me.attackCooldown <= 0) {
+        me.aiState = 'ATTACKING';
+        cmd.primaryAttack = true;
+        return cmd;
+      }
+    }
+
+    // Magnet: Weapon fling opportunism when metallic weapons are dropped on arena floor
+    if (id === 'magnet' && p.looseMetalWeaponsCount > 0 && me.attackCooldown <= 0) {
+      me.aiState = 'ATTACKING';
+      cmd.primaryAttack = true;
+      return cmd;
+    }
+
+    // Scythe: Bypasses Bulwark frontal block by using Reaper Hook pull behind shield!
+    if (id === 'scythe' && p.realEnemy.def.id === 'bulwark' && me.specialCooldown <= 0 && p.horizDist < 290) {
+      me.aiState = 'ATTACKING';
+      cmd.specialAbility = true;
+      return cmd;
+    }
 
     // Rocket cornered Rocket-Jump!
     if (id === 'rocket' && p.nearWallSide !== 0 && p.horizDist < 135 && me.specialCooldown <= 0) {

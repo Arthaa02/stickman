@@ -255,6 +255,12 @@ export interface FighterRuntime {
   skeleton: StickmanSkeleton;
   afterimages: Array<{ x: number; y: number; skeleton: StickmanSkeleton; alpha: number; color: string }>;
 
+  // Stuck projectiles & active ragdoll recovery
+  stuckProjectiles: StuckProjectile[];
+  recoveryTimer: number; // >0: smooth active-IK get-up recovery after ragdoll knockdown
+  wetTimer: number; // drenched in water: thunder damage +50% & instant freeze by ice!
+  dismemberedBones: Set<number>; // bone indices hidden due to overkill dismemberment
+
   // Surrender & Psychological pressure
   panicMeter: number;
   surrendered: boolean;
@@ -342,6 +348,7 @@ export interface FloorZone {
   vx?: number;
   life: number;
   maxLife: number;
+  isFireTornado?: boolean; // Tornado infused with Blue Fire!
 }
 
 export interface PortalPair {
@@ -505,3 +512,67 @@ export interface TournamentState {
   champion: FighterId | null;
   eliminatedIds: Set<FighterId>;
 }
+
+export interface StuckProjectile {
+  id: number;
+  nodeIndex: number;
+  offsetX: number;
+  offsetY: number;
+  angle: number;
+  kind: ProjectileKind;
+  color: string;
+}
+
+export interface SeveredLimb {
+  id: number;
+  kind: 'HEAD' | 'ARM_L' | 'ARM_R' | 'LEG_L' | 'LEG_R';
+  nodes: RagdollNode[];
+  constraints: RagdollConstraint[];
+  color: string;
+  life: number;
+  alpha: number;
+}
+
+export type StageTheme = 'CLASSIC_WHITE' | 'NEON_CYBERPUNK' | 'PLATFORMS' | 'HAZARDS';
+
+export interface StagePlatform {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  bouncy?: boolean;
+  spike?: boolean;
+}
+
+export interface ReplayFrame {
+  timeSec: number;
+  fighters: Array<{
+    slot: 0 | 1;
+    x: number;
+    y: number;
+    hp: number;
+    facing: 1 | -1;
+    skeleton: StickmanSkeleton;
+    color: string;
+    hasWeapon: boolean;
+    speechText?: string | null;
+    stuckProjectiles: StuckProjectile[];
+  }>;
+  projectiles: Array<{ x: number; y: number; kind: ProjectileKind; color: string; radius: number }>;
+  particles: Array<{ x: number; y: number; size: number; color: string; shape: string; alpha: number }>;
+  laserTracers: LaserTracer[];
+  slashTrails: SlashTrail[];
+  screenShake: number;
+}
+
+export interface FighterStatsRecord {
+  id: FighterId;
+  matches: number;
+  wins: number;
+  losses: number;
+  kos: number;
+  surrenders: number;
+  damageDealt: number;
+  tier: 'S' | 'A' | 'B' | 'C' | 'D';
+}
+

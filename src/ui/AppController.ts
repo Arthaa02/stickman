@@ -3,8 +3,9 @@ import { FIGHTER_MAP, FIGHTER_ROSTER } from '../data/fighters';
 import { ArenaWorld } from '../engine/ArenaWorld';
 import { ArenaRenderer } from '../rendering/ArenaRenderer';
 import { AssetService } from '../services/assetService';
+import { StatsService } from '../services/statsService';
 import { TournamentManager } from '../tournament/TournamentManager';
-import { BracketMatch, FighterId, PlaybackSpeed, RoundStage } from '../types/game';
+import { BracketMatch, FighterId, PlaybackSpeed, RoundStage, StageTheme } from '../types/game';
 
 interface MatchupPreset {
   label: string;
@@ -31,16 +32,19 @@ export class AppController {
   private assets: AssetService;
   private sound: SoundManager;
   private tournament: TournamentManager;
+  private stats: StatsService;
   private world!: ArenaWorld;
   private renderer!: ArenaRenderer;
 
   private mode: 'TOURNAMENT' | 'SANDBOX' = 'TOURNAMENT';
   private sandboxA: FighterId = 'water';
   private sandboxB: FighterId = 'blue_fire';
+  private stageTheme: StageTheme = 'CLASSIC_WHITE';
   private playbackSpeed: PlaybackSpeed = 1;
   private autoAdvanceTournament = false;
   private autoAdvanceCountdown = 0;
   private showStitchModal = false;
+  private showTierModal = false;
   private stitchSyncStatusText = '';
 
   private canvasEl!: HTMLCanvasElement;
@@ -55,12 +59,14 @@ export class AppController {
   private telemetryAccum = 0;
   private lastLogTopId = -1;
   private handledWorldResult = false;
+  private wasReplaying = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
     this.assets = new AssetService();
     this.sound = new SoundManager();
     this.tournament = new TournamentManager(false);
+    this.stats = new StatsService();
     this.buildShellLayout();
     this.loadActiveTournamentMatch(false);
 
@@ -136,7 +142,7 @@ export class AppController {
 
     const banner = this.tournament.getMatchBannerTitle(match);
     const autoSlow = this.world ? this.world.autoSlowMoEnabled : true;
-    this.world = new ArenaWorld(match.fighterA, match.fighterB, banner, this.sound);
+    this.world = new ArenaWorld(match.fighterA, match.fighterB, banner, this.sound, this.stageTheme);
     this.world.autoSlowMoEnabled = autoSlow;
     this.handledWorldResult = false;
     this.lastLogTopId = -1;
@@ -162,7 +168,8 @@ export class AppController {
       this.sandboxA,
       this.sandboxB,
       `SANDBOX DUEL: ${fA.name.toUpperCase()} VS ${fB.name.toUpperCase()}`,
-      this.sound
+      this.sound,
+      this.stageTheme
     );
     this.world.autoSlowMoEnabled = autoSlow;
     this.handledWorldResult = false;
@@ -182,20 +189,27 @@ export class AppController {
     this.lastFrameTime = timestampMs;
 
     // Smooth refresh-rate-locked adaptive sub-stepping (eliminates 60Hz/120Hz/144Hz beat judder!)
-    if (this.world.isRunning && !this.world.isPaused && !this.world.result && rawDeltaSec > 0) {
-      const scaledDelta = rawDeltaSec * this.playbackSpeed;
+    const activeRunning = (this.world.isRunning && !this.world.result) || this.world.isReplaying;
+    if (activeRunning && !this.world.isPaused && rawDeltaSec > 0) {
+      const scaledDelta = this.world.isReplaying ? rawDeltaSec : rawDeltaSec * this.playbackSpeed;
       const maxStep = 1 / 90;
       const subSteps = Math.min(18, Math.max(1, Math.ceil(scaledDelta / maxStep)));
       const stepDt = scaledDelta / subSteps;
       for (let s = 0; s < subSteps; s++) {
         this.world.step(stepDt);
-        if (this.world.result) break;
+        if (this.world.result && !this.world.isReplaying) break;
       }
+    }
+
+    if (this.wasReplaying !== this.world.isReplaying) {
+      this.wasReplaying = this.world.isReplaying;
+      this.renderControls();
     }
 
     // Check if match just finished!
     if (this.world.result && !this.handledWorldResult) {
       this.handledWorldResult = true;
+      this.stats.recordMatch(this.world.result);
       if (this.mode === 'TOURNAMENT') {
         const active = this.tournament.getActiveMatch();
         if (active && active.status !== 'COMPLETED') {
@@ -421,6 +435,27 @@ export class AppController {
               ⏩ Skip to Result
             </button>
 
+            <button
+              id="btn-replay"
+              ${this.world.replayFrames.length < 24 ? 'disabled' : ''}
+              class="px-3.5 py-2 rounded-lg text-xs font-bold border transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                this.world.isReplaying
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 font-black animate-pulse'
+                  : 'bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-200 border-indigo-800/70'
+              }"
+              title="Instant Replay of decisive knockout blow in 0.45x slow-motion"
+            >
+              ${this.world.isReplaying ? '⏹ Stop Replay' : '🎬 Replay KO'}
+            </button>
+
+            <button
+              id="btn-tier-stats"
+              class="px-3.5 py-2 rounded-lg text-xs font-bold bg-amber-950/60 hover:bg-amber-900/70 text-amber-200 border border-amber-800/60 transition cursor-pointer flex items-center gap-1.5"
+              title="View persistent fighter tier list, win-loss records, and KO counts"
+            >
+              <span>📊 Tier List & Stats</span>
+            </button>
+
             ${
               this.mode === 'TOURNAMENT'
                 ? `<button
@@ -431,9 +466,19 @@ export class AppController {
                   </button>`
                 : ''
             }
+
+            <div class="inline-flex items-center gap-1.5 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-800 text-xs">
+              <span class="text-[11px] font-semibold text-slate-400">Stage:</span>
+              <select id="sel-stage-theme" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded px-1.5 py-0.5 cursor-pointer font-medium">
+                <option value="CLASSIC_WHITE" ${this.stageTheme === 'CLASSIC_WHITE' ? 'selected' : ''}>⚪ Classic White</option>
+                <option value="PLATFORMS" ${this.stageTheme === 'PLATFORMS' ? 'selected' : ''}>🪜 Floating Platforms</option>
+                <option value="HAZARDS" ${this.stageTheme === 'HAZARDS' ? 'selected' : ''}>⚠️ Spikes & Bouncy Pads</option>
+                <option value="NEON_CYBERPUNK" ${this.stageTheme === 'NEON_CYBERPUNK' ? 'selected' : ''}>🌃 Cyberpunk Neon</option>
+              </select>
+            </div>
           </div>
 
-          <!-- Speed Toggle (0.25x Slow-Mo, 1x, 2x, 4x) + Auto Clash Slow-Mo -->
+          <!-- Speed Toggle (0.25x Slow-Mo, 1x, 2x, 4x) + Auto Clash Slow-Mo + Dynamic Cam + Announcer -->
           <div class="flex flex-wrap items-center gap-2">
             <div class="inline-flex items-center rounded-lg bg-slate-950 p-1 border border-slate-800">
               <span class="text-[11px] font-semibold text-slate-400 px-2">Speed:</span>
@@ -462,6 +507,26 @@ export class AppController {
                 class="accent-indigo-500 rounded cursor-pointer"
               />
               <span>Epic Clash Slow-Mo</span>
+            </label>
+
+            <label class="inline-flex items-center gap-1.5 text-xs text-slate-300 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-800 cursor-pointer select-none">
+              <input
+                id="chk-dynamic-cam"
+                type="checkbox"
+                ${this.renderer.dynamicCameraEnabled ? 'checked' : ''}
+                class="accent-indigo-500 rounded cursor-pointer"
+              />
+              <span>🎥 Dynamic Cam</span>
+            </label>
+
+            <label class="inline-flex items-center gap-1.5 text-xs text-slate-300 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-800 cursor-pointer select-none">
+              <input
+                id="chk-announcer"
+                type="checkbox"
+                ${this.sound.announcerEnabled ? 'checked' : ''}
+                class="accent-indigo-500 rounded cursor-pointer"
+              />
+              <span>🎙️ Announcer</span>
             </label>
           </div>
         </div>
@@ -579,6 +644,38 @@ export class AppController {
     // Bind Epic Clash Slow-Mo toggle
     this.controlsContainerEl.querySelector('#chk-auto-slowmo')?.addEventListener('change', (e) => {
       this.world.autoSlowMoEnabled = (e.target as HTMLInputElement).checked;
+    });
+
+    // Bind Replay
+    this.controlsContainerEl.querySelector('#btn-replay')?.addEventListener('click', () => {
+      if (this.world.isReplaying) {
+        this.world.stopInstantReplay();
+      } else {
+        this.world.startInstantReplay();
+      }
+      this.renderControls();
+    });
+
+    // Bind Tier Stats Modal
+    this.controlsContainerEl.querySelector('#btn-tier-stats')?.addEventListener('click', () => {
+      this.showTierModal = true;
+      this.renderTierModal();
+    });
+
+    // Bind Stage Theme
+    this.controlsContainerEl.querySelector('#sel-stage-theme')?.addEventListener('change', (e) => {
+      this.stageTheme = (e.target as HTMLSelectElement).value as StageTheme;
+      this.world.setStageTheme(this.stageTheme);
+    });
+
+    // Bind Dynamic Camera
+    this.controlsContainerEl.querySelector('#chk-dynamic-cam')?.addEventListener('change', (e) => {
+      this.renderer.dynamicCameraEnabled = (e.target as HTMLInputElement).checked;
+    });
+
+    // Bind Arcade Announcer
+    this.controlsContainerEl.querySelector('#chk-announcer')?.addEventListener('change', (e) => {
+      this.sound.announcerEnabled = (e.target as HTMLInputElement).checked;
     });
 
     // Bind Sandbox selectors & presets
@@ -1299,6 +1396,143 @@ export class AppController {
       this.renderBracketPanel();
       this.renderControls();
       this.renderStitchModal();
+    });
+  }
+
+  private renderTierModal(): void {
+    if (!this.showTierModal) {
+      if (!this.showStitchModal) {
+        this.modalContainerEl.innerHTML = '';
+      }
+      return;
+    }
+
+    const groups = this.stats.getTierGroups();
+    const records = this.stats.getRecords();
+    const recordList = Object.values(records);
+    const totalMatches = Math.floor(recordList.reduce((acc, r) => acc + r.matches, 0) / 2);
+    const totalKOs = recordList.reduce((acc, r) => acc + r.kos, 0);
+    const totalSurrenders = recordList.reduce((acc, r) => acc + r.surrenders, 0);
+
+    const tierBadges: Record<'S' | 'A' | 'B' | 'C' | 'D', { label: string; color: string; border: string; bg: string; desc: string }> = {
+      S: { label: 'S-TIER', color: 'text-amber-300', border: 'border-amber-500/50', bg: 'bg-amber-500/10', desc: 'Apex Legends (Win Rate ≥ 68%)' },
+      A: { label: 'A-TIER', color: 'text-purple-300', border: 'border-purple-500/50', bg: 'bg-purple-500/10', desc: 'High Dominance (Win Rate ≥ 54%)' },
+      B: { label: 'B-TIER', color: 'text-sky-300', border: 'border-sky-500/50', bg: 'bg-sky-500/10', desc: 'Balanced Competitors (Win Rate ≥ 42%)' },
+      C: { label: 'C-TIER', color: 'text-emerald-300', border: 'border-emerald-500/50', bg: 'bg-emerald-500/10', desc: 'Specialist / Counter Picks (Win Rate ≥ 28%)' },
+      D: { label: 'D-TIER', color: 'text-rose-300', border: 'border-rose-500/50', bg: 'bg-rose-500/10', desc: 'Underdogs (Win Rate < 28%)' },
+    };
+
+    const renderFighterStatCard = (r: (typeof recordList)[0]) => {
+      const def = FIGHTER_MAP[r.id];
+      const winRatePct = r.matches > 0 ? Math.round((r.wins / r.matches) * 100) : 50;
+      return `
+        <div class="flex items-center justify-between gap-2.5 p-2 rounded-lg bg-slate-950/80 border border-slate-800">
+          <div class="flex items-center gap-2 min-w-0">
+            <img src="${this.assets.getIconUrl(r.id)}" class="w-8 h-8 rounded-full border shrink-0" style="border-color:${def.color}" alt="${def.name}" />
+            <div class="min-w-0">
+              <div class="text-xs font-bold text-white truncate">${def.name}</div>
+              <div class="text-[10px] text-slate-400 truncate">${def.weaponType}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 shrink-0 text-right font-mono">
+            <div>
+              <div class="text-xs font-black ${winRatePct >= 60 ? 'text-emerald-400' : winRatePct >= 45 ? 'text-sky-400' : 'text-slate-300'}">
+                ${winRatePct}%
+              </div>
+              <div class="text-[9px] text-slate-500">${r.wins}W - ${r.losses}L</div>
+            </div>
+            <div class="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
+              ${r.kos} KO
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
+    this.modalContainerEl.innerHTML = `
+      <div class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+        <div class="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden">
+          <div class="flex items-center justify-between p-4 border-b border-slate-800 shrink-0">
+            <div>
+              <h3 class="text-base font-black text-white flex items-center gap-2">
+                🏆 Persistent Fighter Tier List & Match Records
+              </h3>
+              <p class="text-xs text-slate-400">
+                Calculated dynamically from real physics combat across all tournament & sandbox matches
+              </p>
+            </div>
+            <button id="btn-close-tier" class="text-slate-400 hover:text-white text-lg font-bold px-2 cursor-pointer">✕</button>
+          </div>
+
+          <!-- Global Overview Cards -->
+          <div class="grid grid-cols-3 gap-2.5 p-4 border-b border-slate-800 bg-slate-950/50 shrink-0">
+            <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-center">
+              <div class="text-[10px] font-bold uppercase text-slate-400">Total Matches</div>
+              <div class="text-lg font-black text-indigo-400 font-mono">${totalMatches}</div>
+            </div>
+            <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-center">
+              <div class="text-[10px] font-bold uppercase text-slate-400">Total KOs</div>
+              <div class="text-lg font-black text-rose-400 font-mono">${totalKOs}</div>
+            </div>
+            <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-center">
+              <div class="text-[10px] font-bold uppercase text-slate-400">Surrenders</div>
+              <div class="text-lg font-black text-amber-400 font-mono">${totalSurrenders}</div>
+            </div>
+          </div>
+
+          <!-- Tier Groups List -->
+          <div class="flex-1 overflow-y-auto p-4 space-y-4">
+            ${(['S', 'A', 'B', 'C', 'D'] as const)
+              .map((tierKey) => {
+                const badge = tierBadges[tierKey];
+                const fighters = groups[tierKey];
+                if (fighters.length === 0) return '';
+                return `
+                  <div class="rounded-xl border ${badge.border} ${badge.bg} p-3 flex flex-col gap-2">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-black tracking-wider ${badge.color}">${badge.label} • ${badge.desc}</span>
+                      <span class="text-[10px] font-mono font-bold text-slate-400">${fighters.length} Fighter${fighters.length > 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      ${fighters.map((r) => renderFighterStatCard(r)).join('')}
+                    </div>
+                  </div>
+                `;
+              })
+              .join('')}
+          </div>
+
+          <div class="p-3 border-t border-slate-800 flex items-center justify-between gap-2 shrink-0 bg-slate-950/60">
+            <button
+              id="btn-reset-stats"
+              class="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-800 cursor-pointer"
+            >
+              Reset All Match Records
+            </button>
+            <button
+              id="btn-close-tier-bottom"
+              class="px-4 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const close = () => {
+      this.showTierModal = false;
+      this.renderTierModal();
+    };
+
+    this.modalContainerEl.querySelector('#btn-close-tier')?.addEventListener('click', close);
+    this.modalContainerEl.querySelector('#btn-close-tier-bottom')?.addEventListener('click', close);
+
+    this.modalContainerEl.querySelector('#btn-reset-stats')?.addEventListener('click', () => {
+      if (confirm('Are you sure you want to reset all persistent fighter match records and tier ratings?')) {
+        this.stats.resetStats();
+        this.renderTierModal();
+      }
     });
   }
 }

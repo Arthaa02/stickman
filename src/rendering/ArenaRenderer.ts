@@ -16,6 +16,10 @@ export class ArenaRenderer {
   private ctx: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
   public readonly assets: AssetService;
+  private camX = ARENA_WIDTH * 0.5;
+  private camY = ARENA_HEIGHT * 0.5;
+  private camZoom = 1.0;
+  public dynamicCameraEnabled = true;
 
   constructor(canvas: HTMLCanvasElement, assets: AssetService) {
     this.canvas = canvas;
@@ -35,21 +39,47 @@ export class ArenaRenderer {
 
   public render(world: ArenaWorld): void {
     const ctx = this.ctx;
+    const isNeon = world.stageTheme === 'NEON_CYBERPUNK';
     ctx.save();
 
-    // Crisp pure white outer & inner background (100% clean classic Stickman Tournament look!)
-    ctx.fillStyle = '#ffffff';
+    // Outer backdrop fill
+    ctx.fillStyle = isNeon ? '#060810' : '#ffffff';
     ctx.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
 
-    // Smooth harmonic camera recoil on heavy slams, rifle shots, & clashes (no per-frame random jitter!)
+    // Dynamic Cinematic Camera Tracking (smooth lerp toward action midpoint & zoom in on clashes!)
+    if (this.dynamicCameraEnabled && world.fighters.length >= 2) {
+      const f0 = world.fighters[0];
+      const f1 = world.fighters[1];
+      const targetX = clamp((f0.x + f1.x) * 0.5, ARENA_PADDING_X + 160, ARENA_WIDTH - ARENA_PADDING_X - 160);
+      const targetY = clamp((f0.y + f1.y) * 0.5 - 20, ARENA_TOP + 120, ARENA_FLOOR_Y - 90);
+      const dist = Math.hypot(f1.x - f0.x, f1.y - f0.y);
+      let targetZ = clamp(1.36 - (dist / 850) * 0.36, 1.0, 1.25);
+      if (world.slowMoTimer > 0 || world.isReplaying) {
+        targetZ = Math.min(1.32, targetZ + 0.12);
+      }
+      this.camX += (targetX - this.camX) * 0.08;
+      this.camY += (targetY - this.camY) * 0.08;
+      this.camZoom += (targetZ - this.camZoom) * 0.08;
+    } else {
+      this.camX = ARENA_WIDTH * 0.5;
+      this.camY = ARENA_HEIGHT * 0.5;
+      this.camZoom = 1.0;
+    }
+
     ctx.save();
+    // Apply camera transform
+    ctx.translate(ARENA_WIDTH * 0.5, ARENA_HEIGHT * 0.5);
+    ctx.scale(this.camZoom, this.camZoom);
+    ctx.translate(-this.camX, -this.camY);
+
+    // Smooth harmonic camera recoil on heavy slams, rifle shots, & clashes
     if (world.screenShake > 0.15) {
       const sx = Math.sin(world.elapsedSec * 52) * world.screenShake * 0.52;
       const sy = Math.cos(world.elapsedSec * 41) * world.screenShake * 0.38;
       ctx.translate(sx, sy);
     }
 
-    // Clip dynamic arena floor/wall effects neatly inside the white arena rectangle
+    // Clip dynamic arena floor/wall effects neatly inside the arena rectangle
     ctx.save();
     ctx.beginPath();
     ctx.rect(
@@ -60,6 +90,38 @@ export class ArenaRenderer {
     );
     ctx.clip();
 
+    // Interior arena fill
+    ctx.fillStyle = isNeon ? '#0b0f19' : '#ffffff';
+    ctx.fillRect(
+      ARENA_PADDING_X,
+      ARENA_TOP,
+      ARENA_WIDTH - ARENA_PADDING_X * 2,
+      ARENA_FLOOR_Y - ARENA_TOP
+    );
+
+    // Cyberpunk Neon Grid
+    if (isNeon) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.12)';
+      ctx.lineWidth = 1;
+      for (let x = ARENA_PADDING_X; x < ARENA_WIDTH - ARENA_PADDING_X; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, ARENA_TOP);
+        ctx.lineTo(x, ARENA_FLOOR_Y);
+        ctx.stroke();
+      }
+      for (let y = ARENA_TOP; y < ARENA_FLOOR_Y; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(ARENA_PADDING_X, y);
+        ctx.lineTo(ARENA_WIDTH - ARENA_PADDING_X, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 0. Stage Floating Platforms & Hazards
+    this.drawPlatforms(world);
+
     // 1. Portals & Singularity Black Holes
     this.drawPortals(world);
     this.drawSingularities(world);
@@ -67,9 +129,10 @@ export class ArenaRenderer {
     // 2. Cascading Glass Walls & Pillars (clipped cleanly at floor as they erupt!)
     this.drawObstacles(world);
 
-    // 3. Dropped Weapons, Severed Weapon Tips & Glass Shards
+    // 3. Dropped Weapons, Severed Weapon Tips, Glass Shards & Severed Limbs
     this.drawDroppedWeapons(world);
     this.drawGlassShards(world);
+    this.drawSeveredLimbs(world);
 
     // 4. Shadow Clones
     this.drawClones(world);
@@ -91,15 +154,20 @@ export class ArenaRenderer {
 
     ctx.restore(); // end arena interior clip
 
-    // 8. Crisp Classic Black Rectangular Arena Frame
-    ctx.strokeStyle = '#111827';
-    ctx.lineWidth = 2.6;
+    // 8. Crisp Rectangular Arena Frame
+    ctx.strokeStyle = isNeon ? '#06b6d4' : '#111827';
+    ctx.lineWidth = isNeon ? 3.0 : 2.6;
+    if (isNeon) {
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = '#06b6d4';
+    }
     ctx.strokeRect(
       ARENA_PADDING_X,
       ARENA_TOP,
       ARENA_WIDTH - ARENA_PADDING_X * 2,
       ARENA_FLOOR_Y - ARENA_TOP
     );
+    ctx.shadowBlur = 0;
 
     // 9. Match-Start Fighter Name Labels & Classic Colored Floating Dialogue
     this.drawFighterIntroNames(world);
@@ -109,7 +177,10 @@ export class ArenaRenderer {
       }
     }
 
-    ctx.restore(); // end screen-shake transform
+    ctx.restore(); // end dynamic camera & screen-shake transform
+
+    // 9B. Instant Replay Overlay
+    this.drawReplayOverlay(world);
 
     // 10. Slim Header Strip & Classic End-of-Round "WINNER : <NAME>" Typography
     this.drawArenaHUD(world);
@@ -463,7 +534,12 @@ export class ArenaRenderer {
     const isShocked = f.stunTimer > 0 && f.electroFlash && Math.floor(timeSec * 28) % 2 === 0;
     const bodyColor = isShocked ? '#eab308' : f.def.color;
 
-    this.drawSkeletonBackAndTorso(f.skeleton, bodyColor, 5.8);
+    if (world.stageTheme === 'NEON_CYBERPUNK') {
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = f.def.color;
+    }
+
+    this.drawSkeletonBackAndTorso(f.skeleton, bodyColor, 5.8, f.dismemberedBones);
 
     // 4. Held Articulated Oversized Weapon (sandwiched naturally between back arm L & front arm R!)
     const yoyoInFlight =
@@ -544,7 +620,22 @@ export class ArenaRenderer {
     }
 
     // 5. Front Arm (R) drawn over weapon handle for crisp grip!
-    this.drawSkeletonFrontArm(f.skeleton, bodyColor, 5.8);
+    this.drawSkeletonFrontArm(f.skeleton, bodyColor, 5.8, f.dismemberedBones);
+
+    // 5B. Stuck Projectiles embedded in ragdoll bones
+    this.drawStuckProjectiles(f);
+
+    // 5C. Water Drenched Dripping FX
+    if (f.wetTimer > 0) {
+      ctx.save();
+      ctx.fillStyle = '#38bdf8';
+      const dripDrop = Math.sin(timeSec * 16 + f.slot) * 8;
+      ctx.beginPath();
+      ctx.arc(f.skeleton.pelvis.x + (f.slot === 0 ? -6 : 6), f.skeleton.pelvis.y + 18 + dripDrop, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     ctx.restore(); // end phaseTimer alpha
 
     // 6. Solid Ice Block Encasement if Frozen by Cryomancy!
@@ -570,12 +661,13 @@ export class ArenaRenderer {
 
   /**
    * Draws back leg (L), back arm (L), spine, front leg (R), and solid-colored circle head
-   * with 100% unified stickman color (no black lollipop border — exact classic animation style!).
+   * with 100% unified stickman color, respecting dismembered limbs.
    */
   private drawSkeletonBackAndTorso(
     sk: StickmanSkeleton,
     color: string,
-    lineWidth: number
+    lineWidth: number,
+    dismembered?: Set<number>
   ): void {
     const ctx = this.ctx;
     ctx.save();
@@ -585,15 +677,23 @@ export class ArenaRenderer {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Back leg (L) & back arm (L)
-    ctx.beginPath();
-    ctx.moveTo(sk.pelvis.x, sk.pelvis.y);
-    ctx.lineTo(sk.kneeL.x, sk.kneeL.y);
-    ctx.lineTo(sk.footL.x, sk.footL.y);
-    ctx.moveTo(sk.neck.x, sk.neck.y);
-    ctx.lineTo(sk.elbowL.x, sk.elbowL.y);
-    ctx.lineTo(sk.handL.x, sk.handL.y);
-    ctx.stroke();
+    // Back leg (L)
+    if (!dismembered?.has(7) && !dismembered?.has(8)) {
+      ctx.beginPath();
+      ctx.moveTo(sk.pelvis.x, sk.pelvis.y);
+      ctx.lineTo(sk.kneeL.x, sk.kneeL.y);
+      ctx.lineTo(sk.footL.x, sk.footL.y);
+      ctx.stroke();
+    }
+
+    // Back arm (L)
+    if (!dismembered?.has(3) && !dismembered?.has(4)) {
+      ctx.beginPath();
+      ctx.moveTo(sk.neck.x, sk.neck.y);
+      ctx.lineTo(sk.elbowL.x, sk.elbowL.y);
+      ctx.lineTo(sk.handL.x, sk.handL.y);
+      ctx.stroke();
+    }
 
     // Spine / Torso
     ctx.lineWidth = lineWidth + 0.7;
@@ -603,25 +703,31 @@ export class ArenaRenderer {
     ctx.stroke();
 
     // Front leg (R)
-    ctx.lineWidth = lineWidth;
-    ctx.beginPath();
-    ctx.moveTo(sk.pelvis.x, sk.pelvis.y);
-    ctx.lineTo(sk.kneeR.x, sk.kneeR.y);
-    ctx.lineTo(sk.footR.x, sk.footR.y);
-    ctx.stroke();
+    if (!dismembered?.has(9) && !dismembered?.has(10)) {
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+      ctx.moveTo(sk.pelvis.x, sk.pelvis.y);
+      ctx.lineTo(sk.kneeR.x, sk.kneeR.y);
+      ctx.lineTo(sk.footR.x, sk.footR.y);
+      ctx.stroke();
+    }
 
-    // Solid Colored Stickman Head
-    ctx.beginPath();
-    ctx.arc(sk.head.x, sk.head.y, HEAD_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
+    // Solid Colored Stickman Head (hidden if decapitated)
+    if (!dismembered?.has(0)) {
+      ctx.beginPath();
+      ctx.arc(sk.head.x, sk.head.y, HEAD_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
   private drawSkeletonFrontArm(
     sk: StickmanSkeleton,
     color: string,
-    lineWidth: number
+    lineWidth: number,
+    dismembered?: Set<number>
   ): void {
+    if (dismembered?.has(5) || dismembered?.has(6)) return;
     const ctx = this.ctx;
     ctx.save();
     ctx.strokeStyle = color;
@@ -633,6 +739,172 @@ export class ArenaRenderer {
     ctx.lineTo(sk.elbowR.x, sk.elbowR.y);
     ctx.lineTo(sk.handR.x, sk.handR.y);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawPlatforms(world: ArenaWorld): void {
+    const ctx = this.ctx;
+    const isNeon = world.stageTheme === 'NEON_CYBERPUNK';
+
+    for (const plat of world.platforms) {
+      ctx.save();
+      if (plat.spike) {
+        // Lethal arena spike wall
+        ctx.fillStyle = isNeon ? '#f43f5e' : '#475569';
+        const numSpikes = Math.floor(plat.height / 14);
+        const spikeH = plat.height / numSpikes;
+        const inward = plat.x < ARENA_WIDTH * 0.5 ? 1 : -1;
+        for (let i = 0; i < numSpikes; i++) {
+          const sy = plat.y + i * spikeH;
+          ctx.beginPath();
+          ctx.moveTo(plat.x, sy);
+          ctx.lineTo(plat.x + inward * plat.width, sy + spikeH * 0.5);
+          ctx.lineTo(plat.x, sy + spikeH);
+          ctx.closePath();
+          ctx.fill();
+        }
+      } else if (plat.bouncy) {
+        // Trampoline bounce pad
+        ctx.fillStyle = '#ec4899';
+        ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+        ctx.fillStyle = '#fbcfe8';
+        ctx.fillRect(plat.x + 4, plat.y + 2, plat.width - 8, 4);
+      } else {
+        // Solid floating platform
+        ctx.fillStyle = isNeon ? '#1e293b' : '#334155';
+        ctx.strokeStyle = isNeon ? '#38bdf8' : '#0f172a';
+        ctx.lineWidth = 2;
+        ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+        ctx.strokeRect(plat.x, plat.y, plat.width, plat.height);
+        ctx.fillStyle = isNeon ? '#0284c7' : '#64748b';
+        ctx.fillRect(plat.x + 2, plat.y + 2, plat.width - 4, 3);
+      }
+      ctx.restore();
+    }
+  }
+
+  private drawSeveredLimbs(world: ArenaWorld): void {
+    const ctx = this.ctx;
+    for (const limb of world.severedLimbs) {
+      if (limb.life <= 0 || limb.nodes.length < 2) continue;
+      ctx.save();
+      ctx.globalAlpha = limb.alpha;
+      ctx.strokeStyle = limb.color;
+      ctx.fillStyle = limb.color;
+      ctx.lineWidth = 5.2;
+      ctx.lineCap = 'round';
+
+      if (limb.kind === 'HEAD') {
+        const headNode = limb.nodes[0];
+        ctx.beginPath();
+        ctx.arc(headNode.x, headNode.y, HEAD_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+        const neckNode = limb.nodes[1];
+        ctx.beginPath();
+        ctx.moveTo(headNode.x, headNode.y);
+        ctx.lineTo(neckNode.x, neckNode.y);
+        ctx.stroke();
+      } else {
+        const n0 = limb.nodes[0];
+        const n1 = limb.nodes[1];
+        ctx.beginPath();
+        ctx.moveTo(n0.x, n0.y);
+        ctx.lineTo(n1.x, n1.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  private drawStuckProjectiles(f: FighterRuntime): void {
+    const ctx = this.ctx;
+    const sk = f.skeleton;
+    const pts = [
+      sk.head,
+      sk.neck,
+      sk.pelvis,
+      sk.elbowL,
+      sk.handL,
+      sk.elbowR,
+      sk.handR,
+      sk.kneeL,
+      sk.footL,
+      sk.kneeR,
+      sk.footR,
+    ];
+
+    for (const sp of f.stuckProjectiles) {
+      const node = pts[sp.nodeIndex] || sk.pelvis;
+      const px = node.x + sp.offsetX;
+      const py = node.y + sp.offsetY;
+
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(sp.angle);
+
+      if (sp.kind === 'SNIPER_BULLET') {
+        ctx.fillStyle = '#eab308';
+        ctx.fillRect(-12, -2, 16, 4);
+      } else if (sp.kind === 'ICE_SHARD') {
+        ctx.fillStyle = '#7dd3fc';
+        ctx.beginPath();
+        ctx.moveTo(-10, -3);
+        ctx.lineTo(12, 0);
+        ctx.lineTo(-10, 3);
+        ctx.closePath();
+        ctx.fill();
+      } else if (sp.kind === 'GLASS_DAGGER') {
+        ctx.fillStyle = '#5eead4';
+        ctx.beginPath();
+        ctx.moveTo(-11, -3);
+        ctx.lineTo(13, 0);
+        ctx.lineTo(-11, 3);
+        ctx.closePath();
+        ctx.fill();
+      } else if (sp.kind === 'VENOM_GLOB') {
+        ctx.fillStyle = '#84cc16';
+        ctx.beginPath();
+        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = sp.color || '#ec4899';
+        ctx.fillRect(-8, -2, 14, 4);
+      }
+      ctx.restore();
+    }
+  }
+
+  private drawReplayOverlay(world: ArenaWorld): void {
+    if (!world.isReplaying) return;
+    const ctx = this.ctx;
+    ctx.save();
+
+    // Red arcade flashing indicator
+    const blink = Math.sin(world.elapsedSec * 12) > 0;
+    if (blink) {
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(ARENA_PADDING_X + 24, ARENA_TOP + 28, 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.font = '900 13px system-ui, sans-serif';
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillText('INSTANT REPLAY', ARENA_PADDING_X + 38, ARENA_TOP + 32);
+
+    // Subtle scanlines
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.08)';
+    for (let y = ARENA_TOP; y < ARENA_FLOOR_Y; y += 4) {
+      ctx.fillRect(ARENA_PADDING_X, y, ARENA_WIDTH - ARENA_PADDING_X * 2, 1.5);
+    }
+
+    // Progress bar at arena bottom
+    const total = world.replayFrames.length || 1;
+    const progress = clamp(world.replayPlaybackIndex / total, 0, 1);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
+    ctx.fillRect(ARENA_PADDING_X + 20, ARENA_FLOOR_Y - 14, ARENA_WIDTH - ARENA_PADDING_X * 2 - 40, 5);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(ARENA_PADDING_X + 20, ARENA_FLOOR_Y - 14, (ARENA_WIDTH - ARENA_PADDING_X * 2 - 40) * progress, 5);
+
     ctx.restore();
   }
 
