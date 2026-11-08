@@ -62,6 +62,14 @@ export class FighterAI {
       return cmd;
     }
 
+    // Otomatis segera trigger Ultimate begitu Mana/Energy mencapai 100%!
+    if (me.ultimateMeter >= 100 && me.ultimateCooldown <= 0 && me.hasWeapon && !me.weaponBroken) {
+      me.aiState = 'ATTACKING';
+      cmd.ultimate = true;
+      me.facing = p.dirToTarget;
+      return cmd;
+    }
+
     // Update facing with horizontal deadband so crossing fighters never rapid-flip left/right
     if (
       Math.abs(p.targetPos.x - me.x) > 26 &&

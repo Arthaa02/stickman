@@ -208,7 +208,7 @@ export class ArenaWorld {
       stateTimer: slot * 1.3,
       attackCooldown: 0.45,
       specialCooldown: 1.1,
-      ultimateMeter: 25,
+      ultimateMeter: 0,
       ultimateCooldown: 0,
       ultimateActiveTimer: 0,
       evadeCooldown: 0,
@@ -452,17 +452,19 @@ export class ArenaWorld {
     if (this.arenaDarknessTimer > 0) this.arenaDarknessTimer = Math.max(0, this.arenaDarknessTimer - dt);
     if (this.timeFreezeTimer > 0) {
       this.timeFreezeTimer = Math.max(0, this.timeFreezeTimer - dt);
-      const frozenSlot = this.timeFreezeOwnerSlot === 0 ? 1 : 0;
-      this.fighters[frozenSlot].vx = 0;
-      this.fighters[frozenSlot].vy = 0;
-      this.fighters[frozenSlot].hitstunTimer = 0.2;
     }
 
     for (const f of this.fighters) {
       if (f.hp > 0 && !f.surrendered && f.aiState !== 'DEFEATED') {
-        f.ultimateMeter = Math.min(100, f.ultimateMeter + dt * 4.0);
+        f.ultimateMeter = Math.min(100, f.ultimateMeter + dt * 0.5);
         if (f.ultimateCooldown > 0) f.ultimateCooldown = Math.max(0, f.ultimateCooldown - dt);
         if (f.ultimateActiveTimer > 0) f.ultimateActiveTimer = Math.max(0, f.ultimateActiveTimer - dt);
+
+        // Otomatis langsung cast ultimate ketika mana penuh (100%) dan off cooldown!
+        if (f.ultimateMeter >= 100 && f.ultimateCooldown <= 0 && f.hasWeapon && !f.weaponBroken) {
+          const enemy = this.fighters[f.slot === 0 ? 1 : 0];
+          this.executeUltimate(f, { x: enemy.x, y: enemy.y - 24 });
+        }
       }
     }
 
@@ -2611,11 +2613,14 @@ export class ArenaWorld {
   private executeUltimate(f: FighterRuntime, targetPos: Vec2): void {
     if (f.ultimateMeter < 100 || f.ultimateCooldown > 0) return;
     f.ultimateMeter = 0;
-    f.ultimateCooldown = 15.0;
+    f.ultimateCooldown = 18.0;
     f.ultimateActiveTimer = 1.6;
+    f.windupTimer = 0;
+    f.windupType = 'NONE';
+    f.dashTimer = 0;
     const enemy = this.fighters[f.slot === 0 ? 1 : 0];
 
-    // Cinematic Ultimate Activation Banner & Slow-Mo Impact
+    // Cinematic Ultimate Activation Banner & Quick Impact
     this.activeUltimateBanner = {
       title: f.def.ultimateName.toUpperCase(),
       subText: f.def.ultimateDesc,
@@ -2623,7 +2628,7 @@ export class ArenaWorld {
       timer: 2.2,
       maxTimer: 2.2,
     };
-    this.slowMoTimer = Math.max(this.slowMoTimer, 0.45);
+    this.slowMoTimer = Math.max(this.slowMoTimer, 0.16);
     this.screenShake = Math.max(this.screenShake, 14);
     this.addLog(`⚡ ULTIMATE: ${f.def.name} unleashed [${f.def.ultimateName}]!`, f.def.color, true);
 
@@ -2733,7 +2738,6 @@ export class ArenaWorld {
         enemy.vx = f.facing * 380;
         enemy.vy = -480;
         enemy.grounded = false;
-        enemy.stunTimer = 0.9;
         this.screenShake = 18;
         this.damageFighter(enemy, f.slot, 34, f.facing * 320, -380, 'BLUNT', f.x);
         this.spawnBurstParticles(enemy.x, enemy.y - 20, '#f97316', 22, 280, 'spark');
@@ -2796,7 +2800,6 @@ export class ArenaWorld {
         }
         enemy.vx = (f.x - enemy.x) * 2.8;
         enemy.vy = -180;
-        enemy.stunTimer = 0.75;
         const boltCount = 8;
         for (let i = 0; i < boltCount; i++) {
           const ang = (i / boltCount) * Math.PI * 2;
@@ -2905,7 +2908,6 @@ export class ArenaWorld {
         this.sound?.playHammerSlam();
         f.vx = f.facing * 720;
         this.damageFighter(enemy, f.slot, 32, f.facing * 640, -180, 'BLUNT', f.x);
-        enemy.stunTimer = 1.0;
         this.screenShake = 18;
         this.spawnBurstParticles(enemy.x, enemy.y - 24, '#94a3b8', 24, 280, 'spark');
         break;
@@ -2945,7 +2947,7 @@ export class ArenaWorld {
       }
 
       case 'thunder': {
-        // Giga-Volt Heaven Strike - 100,000V vertical thunderbolt, stunning enemy and electrocuting floor!
+        // Giga-Volt Heaven Strike - 100,000V vertical thunderbolt, shocking enemy and electrocuting floor!
         f.attackStyle = 'CAST_PALM';
         f.attackAnimDuration = 0.45;
         f.activeAttackTimer = 0.45;
@@ -2961,7 +2963,6 @@ export class ArenaWorld {
           width: 30,
           alpha: 1.0,
         });
-        enemy.stunTimer = 1.25;
         enemy.electroFlash = true;
         this.damageFighter(enemy, f.slot, 34, f.facing * 280, -220, 'ELECTRIC', lx);
         this.spawnBurstParticles(lx, enemy.y - 24, '#38bdf8', 32, 340, 'spark');
@@ -3010,10 +3011,12 @@ export class ArenaWorld {
           life: 6.0,
           maxLife: 6.0,
         });
-        enemy.freezeTimer = 1.4;
-        enemy.frostBuildup = 100;
-        enemy.vx = 0;
-        enemy.vy = 0;
+        if (enemy.grounded) {
+          enemy.freezeTimer = 0.45;
+          enemy.frostBuildup = 80;
+        } else {
+          enemy.frostBuildup = 40;
+        }
         for (let i = -1.5; i <= 1.5; i += 1.0) {
           const spikeX = clamp(enemy.x + i * 45, ARENA_PADDING_X + 30, ARENA_WIDTH - ARENA_PADDING_X - 30);
           this.spawnProjectile({
@@ -3209,7 +3212,6 @@ export class ArenaWorld {
             o.hp = 0;
           }
         }
-        enemy.stunTimer = 1.0;
         this.damageFighter(enemy, f.slot, 30, f.facing * 380, -240, 'BLUNT', f.x);
         this.spawnBurstParticles(f.x, f.y - 24, '#06b6d4', 30, 360, 'ring');
         this.screenShake = 18;
@@ -3332,7 +3334,6 @@ export class ArenaWorld {
         }
         enemy.vx = 0;
         enemy.vy = -550;
-        enemy.stunTimer = 0.85;
         this.damageFighter(enemy, f.slot, 30, f.facing * 280, 420, 'BLUNT', f.x);
         this.spawnBurstParticles(enemy.x, enemy.y - 24, '#e2e8f0', 24, 280, 'spark');
         break;
@@ -3443,7 +3444,6 @@ export class ArenaWorld {
         f.activeAttackTimer = 0.5;
         this.sound?.playWeaponClash();
         f.orbitSawTimer = 3.0;
-        enemy.stunTimer = 0.6;
         for (const dir of [-1, 1]) {
           this.spawnProjectile({
             ownerSlot: f.slot,
@@ -3494,19 +3494,20 @@ export class ArenaWorld {
       }
 
       case 'time': {
-        // Chrono Stasis Rewind - halts enemy in time completely for 1.5s, moves freely, heals +25 HP!
+        // Chrono Stasis Rewind - slows enemy down in chronofield, moves freely, heals +25 HP!
         f.attackStyle = 'CAST_PALM';
         f.attackAnimDuration = 0.4;
         f.activeAttackTimer = 0.4;
         this.sound?.playPortalWarp();
         this.timeFreezeTimer = 1.6;
         this.timeFreezeOwnerSlot = f.slot;
+        enemy.chronoSlowTimer = 1.6;
         f.hp = Math.min(f.maxHp, f.hp + 25);
         f.burnTimer = 0;
         f.poisonTimer = 0;
         f.frostBuildup = 0;
-        enemy.vx = 0;
-        enemy.vy = 0;
+        enemy.vx *= 0.3;
+        enemy.vy *= 0.3;
         this.damageFighter(enemy, f.slot, 16, 0, 0, 'BLUNT', f.x);
         this.spawnBurstParticles(f.x, f.y - 24, '#eab308', 26, 240, 'ring');
         break;
@@ -3522,7 +3523,6 @@ export class ArenaWorld {
         this.createExplosion(enemy.x, enemy.y - 24, f.slot, 24, 260, false, true);
         enemy.frostBuildup = 80;
         enemy.burnTimer = 4.5;
-        enemy.stunTimer = 0.6;
         this.damageFighter(enemy, f.slot, 32, f.facing * 340, -220, 'EXPLOSION', enemy.x);
         this.spawnBurstParticles(enemy.x, enemy.y - 24, '#f59e0b', 32, 340, 'spark');
         break;
@@ -3950,12 +3950,19 @@ export class ArenaWorld {
     victim.hitstunTimer = Math.max(victim.hitstunTimer, 0.14);
     victim.invulnTimer = Math.max(victim.invulnTimer, damageKind === 'FIRE' ? 0.2 : 0.08);
 
-    // Charge Ultimate meters: attacker gains +0.55% per damage, victim gains +0.75% per damage
+    // Charge Ultimate meters: attacker gains +0.32% per damage, victim gains +0.42% per damage
     const attacker = this.fighters[attackerSlot];
     if (attacker && attacker.slot !== victim.slot) {
-      attacker.ultimateMeter = Math.min(100, attacker.ultimateMeter + finalDamage * 0.55);
+      attacker.ultimateMeter = Math.min(100, attacker.ultimateMeter + finalDamage * 0.32);
+      if (attacker.ultimateMeter >= 100 && attacker.ultimateCooldown <= 0 && attacker.hasWeapon && !attacker.weaponBroken) {
+        this.executeUltimate(attacker, { x: victim.x, y: victim.y - 24 });
+      }
     }
-    victim.ultimateMeter = Math.min(100, victim.ultimateMeter + finalDamage * 0.75);
+    victim.ultimateMeter = Math.min(100, victim.ultimateMeter + finalDamage * 0.42);
+    if (victim.ultimateMeter >= 100 && victim.ultimateCooldown <= 0 && victim.hasWeapon && !victim.weaponBroken) {
+      const enemy = this.fighters[victim.slot === 0 ? 1 : 0];
+      this.executeUltimate(victim, { x: enemy.x, y: enemy.y - 24 });
+    }
 
     // Naval Anchor heavy ballast reduces incoming knockback by 48%!
     const kbMult = victim.def.id === 'anchor' ? 0.52 : 1;
@@ -4373,9 +4380,16 @@ export class ArenaWorld {
             this.triggerAlchemyBurst(op.x, op.y, op.ownerSlot, op.brewKind || 'FIRE', op.blueFireCoated);
           }
 
-          // Both fighters gain +15% ultimate meter for the clash!
-          this.fighters[p.ownerSlot].ultimateMeter = Math.min(100, this.fighters[p.ownerSlot].ultimateMeter + 15);
-          this.fighters[op.ownerSlot].ultimateMeter = Math.min(100, this.fighters[op.ownerSlot].ultimateMeter + 15);
+          // Both fighters gain +3.5% ultimate meter for the clash!
+          this.fighters[p.ownerSlot].ultimateMeter = Math.min(100, this.fighters[p.ownerSlot].ultimateMeter + 3.5);
+          this.fighters[op.ownerSlot].ultimateMeter = Math.min(100, this.fighters[op.ownerSlot].ultimateMeter + 3.5);
+          for (const s of [p.ownerSlot, op.ownerSlot]) {
+            const fighter = this.fighters[s];
+            if (fighter.ultimateMeter >= 100 && fighter.ultimateCooldown <= 0 && fighter.hasWeapon && !fighter.weaponBroken) {
+              const enemy = this.fighters[s === 0 ? 1 : 0];
+              this.executeUltimate(fighter, { x: enemy.x, y: enemy.y - 24 });
+            }
+          }
 
           // Mark non-piercing projectiles as destroyed
           if (!p.piercing && p.kind !== 'SNIPER_BULLET') {
