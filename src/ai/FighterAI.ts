@@ -293,6 +293,21 @@ export class FighterAI {
         cmd.primaryAttack = true;
         return cmd;
       }
+
+      // If attack/special is cooling down, jump over the incoming projectile or backpedal instead of standing still!
+      if (
+        p.incomingThreat.projectile &&
+        me.grounded &&
+        !p.incomingThreat.isHighShot &&
+        !p.incomingThreat.isStreamBarrage &&
+        me.evadeCooldown <= 0
+      ) {
+        me.aiState = 'EVADING';
+        cmd.jump = true;
+        cmd.moveDir = -p.incomingThreat.fromDir as -1 | 1;
+        me.evadeCooldown = 0.85;
+        return cmd;
+      }
     }
 
     // 4B. RUTHLESS EXPLOITATION of Vulnerable Opponents (Stunned, Frozen, Ragdolled, Get-Up Recovery, or Disarmed)
@@ -512,16 +527,32 @@ export class FighterAI {
         return cmd;
       }
 
-      // Priority 3: Cooldown Spacing & Footsies (breathing room between exchanges!)
+      // Priority 3: Cooldown Spacing & Active Dynamic Footsies
       me.aiState = 'STALKING';
       if (p.horizDist < minR - 8) {
         // Too close for weapon leverage -> take a measured step back
         cmd.moveDir = -p.dirToTarget as -1 | 1;
-      } else if (p.horizDist > maxR) {
+      } else if (p.horizDist > maxR - 25) {
         cmd.moveDir = p.dirToTarget;
       } else {
-        // Holding firm ready stance, observing opponent's next move
-        cmd.moveDir = 0;
+        // Active footsies & strafing: weave in and out, jump for aerial shot angles!
+        const strafePhase = Math.sin(me.stateTimer * 2.8 + me.slot * 1.7);
+        if (strafePhase > 0.25) {
+          cmd.moveDir = p.dirToTarget; // Advance to apply pressure
+        } else if (strafePhase < -0.25) {
+          cmd.moveDir = -p.dirToTarget as -1 | 1; // Backpedal
+        } else {
+          cmd.moveDir = 0;
+        }
+
+        // Tactical jump for elevated shooting angle or aerial assault!
+        if (
+          me.grounded &&
+          (me.attackCooldown <= 0.12 || me.specialCooldown <= 0.12) &&
+          Math.sin(me.stateTimer * 4.2 + me.slot * 2.1) > 0.65
+        ) {
+          cmd.jump = true;
+        }
       }
     }
 

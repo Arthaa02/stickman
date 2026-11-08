@@ -4248,8 +4248,14 @@ export class ArenaWorld {
   }
 
   private updateProjectiles(dt: number): void {
+    const deadProjectileIds = new Set<number>();
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
+      if (!p) continue;
+      if (deadProjectileIds.has(p.id)) {
+        this.projectiles.splice(i, 1);
+        continue;
+      }
       // Chrono Field Time-Dilation: slows incoming enemy projectiles by 72%!
       let localDt = dt;
       for (const z of this.floorZones) {
@@ -4371,15 +4377,21 @@ export class ArenaWorld {
           this.fighters[p.ownerSlot].ultimateMeter = Math.min(100, this.fighters[p.ownerSlot].ultimateMeter + 15);
           this.fighters[op.ownerSlot].ultimateMeter = Math.min(100, this.fighters[op.ownerSlot].ultimateMeter + 15);
 
-          const idxs = [i, j].sort((a, b) => b - a);
-          for (const idx of idxs) {
-            this.projectiles.splice(idx, 1);
+          // Mark non-piercing projectiles as destroyed
+          if (!p.piercing && p.kind !== 'SNIPER_BULLET') {
+            deadProjectileIds.add(p.id);
+          }
+          if (!op.piercing && op.kind !== 'SNIPER_BULLET') {
+            deadProjectileIds.add(op.id);
           }
           clashed = true;
           break;
         }
       }
-      if (clashed) continue;
+      if (clashed && deadProjectileIds.has(p.id)) {
+        this.projectiles.splice(i, 1);
+        continue;
+      }
 
       // Rocket smoke trail & Blue Fire particle trail
       if (p.kind === 'ROCKET' && Math.random() < 0.65) {
@@ -4825,6 +4837,10 @@ export class ArenaWorld {
         }
         this.projectiles.splice(i, 1);
       }
+    }
+
+    if (deadProjectileIds.size > 0) {
+      this.projectiles = this.projectiles.filter((proj) => !deadProjectileIds.has(proj.id));
     }
   }
 
