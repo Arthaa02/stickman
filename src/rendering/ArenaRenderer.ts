@@ -145,7 +145,8 @@ export class ArenaRenderer {
     // 6. Floor Hazard Zones (drawn with dancing flames licking over feet like 00:56–01:14!)
     this.drawFloorZones(world);
 
-    // 7. Shockwaves, Slash Arcs, Golden Bullet Tracers, Projectiles & Sparks
+    // 7. Ground Fractures, Shockwaves, Slash Arcs, Golden Bullet Tracers, Projectiles & Sparks
+    this.drawGroundFractures(world);
     this.drawShockwaves(world);
     this.drawSlashTrails(world);
     this.drawLaserTracers(world);
@@ -1180,6 +1181,51 @@ export class ArenaRenderer {
     }
   }
 
+  private drawGroundFractures(world: ArenaWorld): void {
+    const ctx = this.ctx;
+    for (const gf of world.groundFractures) {
+      const alpha = clamp(gf.life / gf.maxLife, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.88;
+      ctx.strokeStyle = gf.color;
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      const halfW = gf.width * 0.5;
+      const x = gf.x;
+      const y = gf.y;
+
+      ctx.beginPath();
+      // Primary jagged surface fissure
+      ctx.moveTo(x - halfW, y);
+      ctx.lineTo(x - halfW * 0.65, y - 2);
+      ctx.lineTo(x - halfW * 0.35, y + 3);
+      ctx.lineTo(x, y - 4);
+      ctx.lineTo(x + halfW * 0.38, y + 2);
+      ctx.lineTo(x + halfW * 0.72, y - 2);
+      ctx.lineTo(x + halfW, y);
+
+      // Deep secondary subterranean fracture veins
+      ctx.moveTo(x - halfW * 0.45, y);
+      ctx.lineTo(x - halfW * 0.2, y + 7);
+      ctx.lineTo(x + halfW * 0.05, y + 4);
+      ctx.lineTo(x + halfW * 0.32, y + 8);
+      ctx.lineTo(x + halfW * 0.55, y);
+
+      ctx.stroke();
+
+      // Core impact focal glow
+      ctx.fillStyle = gf.color;
+      ctx.globalAlpha = alpha * 0.35;
+      ctx.beginPath();
+      ctx.ellipse(x, y, halfW * 0.35, 4.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
   private drawShockwaves(world: ArenaWorld): void {
     const ctx = this.ctx;
     for (const sw of world.shockwaves) {
@@ -1187,10 +1233,22 @@ export class ArenaRenderer {
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = sw.color;
-      ctx.lineWidth = 3.5;
+      ctx.lineWidth = 4.0;
       ctx.beginPath();
-      ctx.arc(sw.x, sw.y, sw.radius, Math.PI, Math.PI * 2);
-      ctx.stroke();
+      if (sw.groundOnly) {
+        ctx.arc(sw.x, sw.y, sw.radius, Math.PI, Math.PI * 2);
+        ctx.stroke();
+
+        // Inner radiant energy resonance ring
+        ctx.lineWidth = 2.0;
+        ctx.strokeStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(sw.x, sw.y, Math.max(0, sw.radius - 8), Math.PI, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.restore();
     }
   }

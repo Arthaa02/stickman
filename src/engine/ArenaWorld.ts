@@ -10,6 +10,7 @@ import {
   FighterRuntime,
   FloorZone,
   GlassShard,
+  GroundFracture,
   LaserTracer,
   MatchResult,
   Particle,
@@ -62,6 +63,7 @@ export class ArenaWorld {
   public clones: ShadowClone[] = [];
   public glassShards: GlassShard[] = [];
   public shockwaves: Shockwave[] = [];
+  public groundFractures: GroundFracture[] = [];
   public slashTrails: SlashTrail[] = [];
   public laserTracers: LaserTracer[] = [];
   public particles: Particle[] = [];
@@ -220,6 +222,7 @@ export class ArenaWorld {
       comboStep: 0,
       activeAttackTimer: 0,
       attackAnimDuration: 0.32,
+      slamImpactPending: false,
       attackStyle: 'SLASH_DOWN',
       grappleTargetSlot: null,
       grappleTimer: 0,
@@ -502,6 +505,7 @@ export class ArenaWorld {
     this.updateProjectiles(dt);
     this.updateGlassShards(dt);
     this.updateShockwaves(dt);
+    this.updateGroundFractures(dt);
     this.updateSeveredLimbs(dt);
     this.updateFightersPhysics(dt);
     this.updateParticlesAndTrails(dt);
@@ -791,18 +795,19 @@ export class ArenaWorld {
         // Point-blank defensive rifle butt strike if enemy rushes close!
         if (Math.hypot(enemy.x - f.x, enemy.y - f.y) < 88) {
           f.attackStyle = 'SLASH_DOWN';
-          f.attackAnimDuration = 0.24;
-          f.activeAttackTimer = 0.24;
+          f.attackAnimDuration = 0.28;
+          f.activeAttackTimer = 0.28;
+          f.attackCooldown = 1.45;
           this.sound?.playWeaponClash();
           this.damageFighter(enemy, f.slot, 22, f.facing * 420, -160, 'BLUNT', f.x);
           this.spawnBurstParticles(enemy.x, enemy.y - 20, '#facc15', 14, 240, 'spark');
           this.addLog(`Sniper cracked ${enemy.def.name} with a heavy rifle-butt strike!`, f.def.color);
           break;
         }
-        // Focused 0.42s tracking red laser lock -> fires blazing golden high-caliber bullet!
+        // Focused 0.55s tracking red laser lock -> fires blazing golden high-caliber bullet!
         f.windupType = 'SNIPER_LASER';
-        f.windupMax = 0.42;
-        f.windupTimer = 0.42;
+        f.windupMax = 0.55;
+        f.windupTimer = 0.55;
         f.laserTarget = { ...targetPos };
         break;
       }
@@ -1004,22 +1009,23 @@ export class ArenaWorld {
       }
 
       case 'rubber': {
-        // Long stretchy rubber club whip! (Aerial overhead whip bypasses frontal shield!)
+        // Long stretchy rubber club whip with spring-loaded elastic snap!
         f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.34;
-        f.activeAttackTimer = 0.34;
-        f.stretchScaleX = 1.12;
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        f.stretchScaleX = 1.35;
+        f.stretchScaleY = 0.78;
         this.sound?.playBoing();
-        const reach = 136;
-        this.addSlashArc(f.x, f.y - 24, f.facing, reach * 0.85, '#f472b6');
-        this.hitClonesInReach(f.slot, f.x + f.facing * 80, f.y - 24, 84);
-        if (Math.hypot(enemy.x - (f.x + f.facing * 78), enemy.y - f.y) < 94) {
+        const reach = 145;
+        this.addSlashArc(f.x, f.y - 24, f.facing, reach * 0.9, '#f472b6');
+        this.hitClonesInReach(f.slot, f.x + f.facing * 85, f.y - 24, 88);
+        if (Math.hypot(enemy.x - (f.x + f.facing * 82), enemy.y - f.y) < 98) {
           this.damageFighter(
             enemy,
             f.slot,
-            13,
-            f.facing * 260,
-            0,
+            18,
+            f.facing * 290,
+            -80,
             'BLUNT',
             f.x,
             f.blueFireCoated,
@@ -1205,8 +1211,8 @@ export class ArenaWorld {
       case 'hammer': {
         // Forceful seismic hammer slam wind-up with clear, readable telegraph!
         f.windupType = 'HAMMER_SLAM';
-        f.windupMax = 0.48;
-        f.windupTimer = 0.48;
+        f.windupMax = 0.46;
+        f.windupTimer = 0.46;
         break;
       }
 
@@ -1566,27 +1572,10 @@ export class ArenaWorld {
       }
 
       case 'anchor': {
-        // Heavy Naval Iron Anchor Sweep (shatters Glass & heavy knockback!)
-        f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.42;
-        f.activeAttackTimer = 0.42;
-        f.vx += f.facing * 110;
-        this.sound?.playHammerSlam();
-        this.addSlashArc(f.x + f.facing * 16, f.y - 22, f.facing, 102, '#1e3a8a');
-        this.hitObstaclesInReach(f.x + f.facing * 76, f.y - 22, 88, 999);
-        this.hitClonesInReach(f.slot, f.x + f.facing * 76, f.y - 22, 86);
-        if (Math.hypot(enemy.x - (f.x + f.facing * 74), enemy.y - f.y) < 96) {
-          this.damageFighter(
-            enemy,
-            f.slot,
-            21 + (f.blueFireCoated ? 3 : 0),
-            f.facing * 310,
-            0,
-            'BLUNT',
-            f.x,
-            f.blueFireCoated
-          );
-        }
+        // Colossal Two-Handed Naval Iron Anchor Ground Smash!
+        f.windupType = 'HAMMER_SLAM';
+        f.windupMax = 0.44;
+        f.windupTimer = 0.44;
         break;
       }
 
@@ -1673,15 +1662,16 @@ export class ArenaWorld {
       }
 
       case 'sniper': {
-        // Crisp Evasive Backstep + Lightning-Fast Laser Lock!
+        // Crisp Evasive Backstep + Deliberate Laser Lock!
         const away = f.x < enemy.x ? -1 : 1;
-        f.vx = away * 320;
-        f.vy = -380;
+        f.vx = away * 340;
+        f.vy = -360;
         f.grounded = false;
         f.windupType = 'SNIPER_LASER';
-        f.windupMax = 0.28;
-        f.windupTimer = 0.28;
+        f.windupMax = 0.42;
+        f.windupTimer = 0.42;
         f.laserTarget = { ...targetPos };
+        f.attackCooldown = Math.max(f.attackCooldown, 1.85);
         break;
       }
 
@@ -1941,14 +1931,14 @@ export class ArenaWorld {
 
       case 'rubber': {
         // Controlled Acrobatic Elastic Slingshot Lunge + Whip!
-        f.vx = f.facing * 385;
-        f.vy = -340;
+        f.vx = f.facing * 480;
+        f.vy = -280;
         f.grounded = false;
         f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.46;
-        f.activeAttackTimer = 0.46;
-        f.stretchScaleX = 1.12;
-        f.stretchScaleY = 0.9;
+        f.attackAnimDuration = 0.44;
+        f.activeAttackTimer = 0.44;
+        f.stretchScaleX = 1.45;
+        f.stretchScaleY = 0.72;
         this.sound?.playBoing();
         break;
       }
@@ -3541,10 +3531,12 @@ export class ArenaWorld {
       const dir = normalize(aimPt.x - f.x, aimPt.y - (f.y - 34));
 
       // Grounded heavy rifle recoil slide + golden supersonic bullet (exact 00:01–00:13 feel!)
-      f.vx -= dir.x * 360;
+      f.vx -= dir.x * 380;
       f.attackStyle = 'SHOOT_RECOIL';
-      f.attackAnimDuration = 0.25;
-      f.activeAttackTimer = 0.25;
+      f.attackAnimDuration = 0.32;
+      f.activeAttackTimer = 0.32;
+      // BOLT-ACTION RELOAD: Enforce realistic cooldown interval after firing!
+      f.attackCooldown = Math.max(f.attackCooldown, 1.65);
       this.sound?.playSniperShot();
 
       const muzzleX = f.x + dir.x * 95;
@@ -3583,81 +3575,100 @@ export class ArenaWorld {
       f.laserTarget = null;
     } else if (type === 'HAMMER_SLAM') {
       if (!f.hasWeapon) return;
-      const isAnchor = f.def.id === 'anchor';
       f.attackStyle = 'SLASH_DOWN';
-      f.attackAnimDuration = 0.36;
-      f.activeAttackTimer = 0.36;
-      this.sound?.playHammerSlam();
-      const impactX = clamp(f.x + f.facing * 72, ARENA_PADDING_X + 20, ARENA_WIDTH - ARENA_PADDING_X - 20);
-      const impactY = ARENA_FLOOR_Y;
-
-      this.screenShake = isAnchor ? 14 : 18;
-      this.spawnBurstParticles(impactX, impactY - 6, isAnchor ? '#38bdf8' : '#fbbf24', 26, 320, 'spark');
-      this.spawnBurstParticles(impactX, impactY - 8, '#94a3b8', 18, 200, 'smoke');
-
-      // 1) Destroy ALL Obstacles in wide slam reach!
-      for (let i = this.obstacles.length - 1; i >= 0; i--) {
-        const obs = this.obstacles[i];
-        if (Math.abs(obs.x + obs.width * 0.5 - impactX) < 185) {
-          this.shatterGlassObstacle(obs, f.facing);
-          this.addLog(`SMASH! ${f.def.name} obliterated the barrier in a single swing!`, f.def.color, true);
-        }
-      }
-
-      this.hitClonesInReach(f.slot, impactX, f.y - 10, 120);
-
-      // 2) Direct Warhammer / Naval Anchor hit!
-      const enemyPelvisH = enemy.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT;
-      if (Math.hypot(enemy.x - impactX, enemy.y - (ARENA_FLOOR_Y - enemyPelvisH)) < 112) {
-        if (!isAnchor && enemy.def.id === 'bulwark' && enemy.shieldIntegrity > 0) {
-          enemy.shieldIntegrity = 0;
-          enemy.shieldBlocking = false;
-          enemy.hasWeapon = false;
-          enemy.weaponBroken = true;
-          enemy.panicMeter += 65;
-          this.spawnBurstParticles(enemy.x, enemy.y - 16, '#cbd5e1', 32, 380, 'shard');
-          this.triggerEpicSlowMo(0.38);
-          this.addLog(
-            `CATACLYSM! Hammer shattered Bulwark's steel Tower Shield in one swing!`,
-            f.def.color,
-            true
-          );
-        }
-
-        if (enemy.def.id === 'rubber') {
-          enemy.vx = f.facing * 420;
-          enemy.vy = -440;
-          enemy.stretchScaleY = 0.88;
-          enemy.stretchScaleX = 1.15;
-          this.sound?.playBoing();
-        } else {
-          const kbDir = isAnchor ? (f.x < enemy.x ? -1 : 1) : f.facing;
-          this.damageFighter(
-            enemy,
-            f.slot,
-            isAnchor ? 34 : 38,
-            kbDir * (isAnchor ? 380 : 440),
-            isAnchor ? -280 : -380,
-            'HAMMER_SEISMIC',
-            isAnchor ? enemy.x - enemy.facing * 32 : f.x,
-            f.blueFireCoated
-          );
-        }
-      }
-
-      // 3) Spawn Floor Earthquake / Depth-Charge Shockwave!
-      this.shockwaves.push({
-        ownerSlot: f.slot,
-        x: impactX,
-        y: ARENA_FLOOR_Y,
-        radius: 20,
-        maxRadius: isAnchor ? 320 : 380,
-        speed: 620,
-        color: isAnchor ? '#0284c7' : '#f59e0b',
-        groundOnly: true,
-        hitSlots: new Set<number>(),
-      });
+      f.attackAnimDuration = 0.46;
+      f.activeAttackTimer = 0.46;
+      f.slamImpactPending = true;
+      f.vx += f.facing * 160;
     }
+  }
+
+  private triggerHammerFloorImpact(f: FighterRuntime): void {
+    if (!f.hasWeapon) return;
+    const isAnchor = f.def.id === 'anchor';
+    const enemy = this.fighters[f.slot === 0 ? 1 : 0];
+    this.sound?.playHammerSlam();
+    const impactX = clamp(f.x + f.facing * 76, ARENA_PADDING_X + 24, ARENA_WIDTH - ARENA_PADDING_X - 24);
+    const impactY = ARENA_FLOOR_Y;
+
+    this.screenShake = isAnchor ? 22 : 20;
+    this.spawnBurstParticles(impactX, impactY - 6, isAnchor ? '#38bdf8' : '#fbbf24', 32, 340, 'spark');
+    this.spawnBurstParticles(impactX, impactY - 8, '#78716c', 26, 260, 'shard');
+    this.spawnBurstParticles(impactX, impactY - 10, '#94a3b8', 22, 180, 'smoke');
+
+    // Ground fracture fissure decal on arena floor
+    this.groundFractures.push({
+      id: this.nextEntityId++,
+      x: impactX,
+      y: impactY,
+      width: isAnchor ? 170 : 190,
+      color: isAnchor ? '#1e3a8a' : '#b45309',
+      life: 2.8,
+      maxLife: 2.8,
+    });
+
+    // 1) Destroy ALL Obstacles in wide slam reach!
+    for (let i = this.obstacles.length - 1; i >= 0; i--) {
+      const obs = this.obstacles[i];
+      if (Math.abs(obs.x + obs.width * 0.5 - impactX) < 185) {
+        this.shatterGlassObstacle(obs, f.facing);
+        this.addLog(`SMASH! ${f.def.name} obliterated the barrier in a single ground slam!`, f.def.color, true);
+      }
+    }
+
+    this.hitClonesInReach(f.slot, impactX, f.y - 10, 120);
+
+    // 2) Direct Warhammer / Naval Anchor hit!
+    const enemyPelvisH = enemy.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT;
+    if (Math.hypot(enemy.x - impactX, enemy.y - (ARENA_FLOOR_Y - enemyPelvisH)) < 118) {
+      if (!isAnchor && enemy.def.id === 'bulwark' && enemy.shieldIntegrity > 0) {
+        enemy.shieldIntegrity = 0;
+        enemy.shieldBlocking = false;
+        enemy.hasWeapon = false;
+        enemy.weaponBroken = true;
+        enemy.panicMeter += 65;
+        this.spawnBurstParticles(enemy.x, enemy.y - 16, '#cbd5e1', 32, 380, 'shard');
+        this.triggerEpicSlowMo(0.38);
+        this.addLog(
+          `CATACLYSM! Hammer shattered Bulwark's steel Tower Shield in one swing!`,
+          f.def.color,
+          true
+        );
+      }
+
+      if (enemy.def.id === 'rubber') {
+        const dmg = isAnchor ? 17 : 19;
+        this.damageFighter(enemy, f.slot, dmg, f.facing * 440, -420, 'BLUNT', impactX);
+        enemy.stretchScaleY = 0.65;
+        enemy.stretchScaleX = 1.45;
+        this.sound?.playBoing();
+      } else {
+        const kbDir = isAnchor ? (f.x < enemy.x ? -1 : 1) : f.facing;
+        this.damageFighter(
+          enemy,
+          f.slot,
+          isAnchor ? 34 : 38,
+          kbDir * (isAnchor ? 380 : 440),
+          isAnchor ? -280 : -380,
+          'HAMMER_SEISMIC',
+          isAnchor ? enemy.x - enemy.facing * 32 : f.x,
+          f.blueFireCoated
+        );
+      }
+    }
+
+    // 3) Spawn Floor Earthquake / Depth-Charge Shockwave!
+    this.shockwaves.push({
+      ownerSlot: f.slot,
+      x: impactX,
+      y: ARENA_FLOOR_Y,
+      radius: 16,
+      maxRadius: isAnchor ? 340 : 380,
+      speed: 680,
+      color: isAnchor ? '#38bdf8' : '#fbbf24',
+      groundOnly: true,
+      hitSlots: new Set<number>([f.slot]),
+    });
   }
 
   private firePrismLaserRay(shooter: FighterRuntime, angle: number, damage: number): void {
@@ -3915,16 +3926,17 @@ export class ArenaWorld {
       }
     }
 
-    // Rubber blunt immunity check!
+    // Rubber elastic blunt resistance check: absorbs 55% blunt damage and rebounds comically!
     let finalDamage = rawDamage;
     if (victim.def.id === 'rubber' && damageKind === 'BLUNT') {
-      finalDamage = 0;
-      victim.vx = clamp(victim.vx * 0.3 + kbX * 0.9, -420, 420);
-      victim.vy = Math.max(victim.vy, -180);
-      victim.stretchScaleX = 1.14;
-      victim.stretchScaleY = 0.88;
+      finalDamage = Math.max(1, Math.round(rawDamage * 0.45));
+      victim.vx = clamp(victim.vx * 0.3 + kbX * 0.95, -460, 460);
+      victim.vy = clamp(victim.vy * 0.3 + kbY * 0.95, -440, 440);
+      victim.stretchScaleX = 1.45;
+      victim.stretchScaleY = 0.65;
       this.sound?.playBoing();
-      return false;
+      this.spawnBurstParticles(victim.x, victim.y - 18, '#f472b6', 14, 220, 'ring');
+      this.addLog(`BOING! Rubber absorbed 55% blunt damage with elastic rebound!`, '#ec4899');
     }
 
     // Bonus shatter damage if victim is frozen in an Ice Block!
@@ -4666,6 +4678,8 @@ export class ArenaWorld {
         // 5B) RUBBER ELASTIC BODY BOUNCE! Projectiles ricochet off Rubber's body!
         if (
           target.def.id === 'rubber' &&
+          p.kind !== 'SNIPER_BULLET' &&
+          p.kind !== 'ROCKET' &&
           p.kind !== 'BLUE_FIREBALL' &&
           p.kind !== 'FLAME_STREAM' &&
           p.kind !== 'ICE_SHARD' &&
@@ -5410,6 +5424,15 @@ export class ArenaWorld {
     }
   }
 
+  private updateGroundFractures(dt: number): void {
+    for (let i = this.groundFractures.length - 1; i >= 0; i--) {
+      this.groundFractures[i].life -= dt;
+      if (this.groundFractures[i].life <= 0) {
+        this.groundFractures.splice(i, 1);
+      }
+    }
+  }
+
   private updateFightersPhysics(dt: number): void {
     for (const f of this.fighters) {
       f.stateTimer += dt;
@@ -5420,6 +5443,10 @@ export class ArenaWorld {
       if (f.invulnTimer > 0) f.invulnTimer = Math.max(0, f.invulnTimer - dt);
       if (f.hitstunTimer > 0) f.hitstunTimer = Math.max(0, f.hitstunTimer - dt);
       if (f.activeAttackTimer > 0) f.activeAttackTimer = Math.max(0, f.activeAttackTimer - dt);
+      if (f.slamImpactPending && (f.activeAttackTimer <= f.attackAnimDuration * 0.62 || f.activeAttackTimer <= 0)) {
+        f.slamImpactPending = false;
+        this.triggerHammerFloorImpact(f);
+      }
       if (f.wallClingTimer > 0) f.wallClingTimer = Math.max(0, f.wallClingTimer - dt);
       if (f.spinDeflectTimer > 0) f.spinDeflectTimer = Math.max(0, f.spinDeflectTimer - dt);
       if (f.chronoSlowTimer > 0) f.chronoSlowTimer = Math.max(0, f.chronoSlowTimer - dt);

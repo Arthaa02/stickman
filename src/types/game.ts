@@ -248,6 +248,7 @@ export interface FighterRuntime {
   comboStep: number;
   activeAttackTimer: number;
   attackAnimDuration: number;
+  slamImpactPending?: boolean;
   attackStyle:
     | 'SLASH_DOWN'
     | 'SLASH_UP'
@@ -454,6 +455,16 @@ export interface Shockwave {
   color: string;
   groundOnly: boolean;
   hitSlots: Set<number>;
+}
+
+export interface GroundFracture {
+  id: number;
+  x: number;
+  y: number;
+  width: number;
+  color: string;
+  life: number;
+  maxLife: number;
 }
 
 export interface SlashTrail {

@@ -513,7 +513,13 @@ export function updateProceduralIKSkeleton(
   const isCrushed = f.gravityScale > 3;
   const isRecovering = f.recoveryTimer > 0;
   const recoveryDrop = isRecovering ? (f.recoveryTimer / 0.38) * 32 : 0;
-  const targetCrouchDrop = isCrushed ? 26 : f.crouching ? 30 : recoveryDrop;
+  const isHeavySlamming =
+    (f.def.id === 'hammer' || f.def.id === 'anchor') &&
+    f.activeAttackTimer > 0 &&
+    f.attackAnimDuration > 0 &&
+    1 - f.activeAttackTimer / f.attackAnimDuration >= 0.32;
+  const slamDrop = isHeavySlamming ? 22 : 0;
+  const targetCrouchDrop = isCrushed ? 26 : f.crouching ? 30 : recoveryDrop + slamDrop;
 
   // Pelvis anchor with stride hip-bob
   const targetPelvisY = f.y + (targetCrouchDrop + f.hipBob) * verticalSign;
@@ -526,7 +532,11 @@ export function updateProceduralIKSkeleton(
 
   // Poised spine lean: subtle martial-arts forward lean, low duck when crouching
   let desiredLean = clamp(f.vx * 0.024, -8, 8);
-  if (f.crouching) {
+  if (isHeavySlamming) {
+    desiredLean = dir * 26;
+  } else if ((f.def.id === 'hammer' || f.def.id === 'anchor') && f.windupTimer > 0 && f.windupType === 'HAMMER_SLAM') {
+    desiredLean = -dir * 18;
+  } else if (f.crouching) {
     desiredLean = dir * 20;
   } else if (f.wallClingTimer > 0 && f.wallTouch !== 0) {
     desiredLean = -f.wallTouch * 8;
@@ -815,18 +825,55 @@ export function updateProceduralIKSkeleton(
   } else if (id === 'hammer' || id === 'anchor') {
     // ---- COLOSSAL WARHAMMER & NAVAL ANCHOR WINDUP & SLAM ----
     if (f.windupType === 'HAMMER_SLAM' && f.windupTimer > 0) {
-      rawHandR = { x: sk.neck.x - dir * 14, y: sk.head.y - 20 * verticalSign };
-      rawHandL = { x: sk.neck.x - dir * 6, y: sk.head.y - 14 * verticalSign };
-      desiredWeaponAngle = dir === 1 ? -2.2 : Math.PI + 2.2;
+      rawHandR = { x: sk.neck.x - dir * 16, y: sk.head.y - 28 * verticalSign };
+      rawHandL = { x: sk.neck.x - dir * 8, y: sk.head.y - 20 * verticalSign };
+      desiredWeaponAngle = dir === 1 ? -2.4 : Math.PI + 2.4;
     } else if (smoothAtk >= 0) {
-      const slamAng = lerp(-1.85, 0.36, smoothAtk);
-      rawHandR = { x: sk.neck.x + dir * 30, y: sk.neck.y + 22 * verticalSign };
-      rawHandL = { x: sk.neck.x + dir * 20, y: sk.neck.y + 26 * verticalSign };
-      desiredWeaponAngle = dir === 1 ? slamAng : Math.PI - slamAng;
+      // Split into accelerating Downswing (0 -> 0.38) and Ground Impact Hold (0.38 -> 1.0)
+      if (atkProgress < 0.38) {
+        const t = clamp(atkProgress / 0.38, 0, 1);
+        const swingT = t * t * (3 - 2 * t);
+        rawHandR = {
+          x: lerp(sk.neck.x - dir * 16, sk.neck.x + dir * 34, swingT),
+          y: lerp(sk.head.y - 28 * verticalSign, sk.pelvis.y + 16 * verticalSign, swingT),
+        };
+        rawHandL = {
+          x: lerp(sk.neck.x - dir * 8, sk.neck.x + dir * 24, swingT),
+          y: lerp(sk.head.y - 20 * verticalSign, sk.pelvis.y + 22 * verticalSign, swingT),
+        };
+        const slamAng = lerp(-2.4, 0.72, swingT);
+        desiredWeaponAngle = dir === 1 ? slamAng : Math.PI - slamAng;
+      } else {
+        // Firmly planted on arena floor in deep impact recoil stance!
+        rawHandR = { x: sk.neck.x + dir * 34, y: sk.pelvis.y + 16 * verticalSign };
+        rawHandL = { x: sk.neck.x + dir * 24, y: sk.pelvis.y + 22 * verticalSign };
+        const plantAng = 0.72;
+        desiredWeaponAngle = dir === 1 ? plantAng : Math.PI - plantAng;
+      }
     } else {
-      rawHandR = { x: sk.neck.x + dir * 22, y: sk.neck.y + 20 * verticalSign };
-      rawHandL = { x: sk.neck.x + dir * 13, y: sk.neck.y + 25 * verticalSign };
-      desiredWeaponAngle = dir === 1 ? -0.65 : Math.PI + 0.65;
+      rawHandR = { x: sk.neck.x + dir * 22, y: sk.neck.y + 18 * verticalSign };
+      rawHandL = { x: sk.neck.x + dir * 12, y: sk.neck.y + 24 * verticalSign };
+      desiredWeaponAngle = dir === 1 ? -0.85 : Math.PI + 0.85;
+    }
+  } else if (id === 'rubber') {
+    // ---- ELASTIC RUBBER CLUB WHIP & SLINGSHOT ----
+    if (smoothAtk >= 0) {
+      const whipProgress = Math.sin(atkProgress * Math.PI);
+      const extend = whipProgress * 52;
+      const swingAngle = f.aimAngle + Math.sin(atkProgress * Math.PI) * 0.75 * dir;
+      desiredWeaponAngle = swingAngle;
+      rawHandR = {
+        x: sk.neck.x + Math.cos(swingAngle) * (26 + extend),
+        y: sk.neck.y + 12 * verticalSign + Math.sin(swingAngle) * (26 + extend),
+      };
+      rawHandL = {
+        x: sk.neck.x - dir * 14 * (1 - whipProgress),
+        y: sk.neck.y + 24 * verticalSign,
+      };
+    } else {
+      rawHandR = { x: sk.neck.x + dir * 22, y: sk.neck.y + 18 * verticalSign };
+      rawHandL = { x: sk.neck.x - dir * 8, y: sk.neck.y + 24 * verticalSign };
+      desiredWeaponAngle = f.aimAngle;
     }
   } else if (id === 'bulwark' && f.shieldIntegrity > 0) {
     // ---- TOWER SHIELD FORTRESS BRACE ----
@@ -873,11 +920,9 @@ export function updateProceduralIKSkeleton(
       desiredWeaponAngle = f.aimAngle;
     }
   } else {
-    // ---- MAGNET, RUBBER, CLONE, THUNDER, BOOMERANG, WHIP, SHADOW, YO-YO, TIME ----
+    // ---- MAGNET, CLONE, THUNDER, BOOMERANG, WHIP, SHADOW, YO-YO, TIME ----
     const whipExtend =
-      id === 'rubber' && atkProgress >= 0
-        ? Math.sin(atkProgress * Math.PI) * 44
-        : (id === 'whip' || id === 'yo_yo') && atkProgress >= 0
+      (id === 'whip' || id === 'yo_yo') && atkProgress >= 0
         ? Math.sin(atkProgress * Math.PI) * 22
         : atkProgress >= 0
         ? Math.sin(atkProgress * Math.PI) * 15
