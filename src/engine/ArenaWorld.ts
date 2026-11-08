@@ -740,8 +740,8 @@ export class ArenaWorld {
       case 'long_sword': {
         f.attackStyle =
           f.comboStep === 0 ? 'SLASH_DOWN' : f.comboStep === 1 ? 'SLASH_UP' : 'THRUST';
-        f.attackAnimDuration = 0.34;
-        f.activeAttackTimer = 0.34;
+        f.attackAnimDuration = 0.22;
+        f.activeAttackTimer = 0.22;
         f.vx += f.facing * 135;
         this.sound?.playSlash();
 
@@ -779,7 +779,7 @@ export class ArenaWorld {
             this.damageFighter(
               enemy,
               f.slot,
-              15 + (f.blueFireCoated ? 5 : 0),
+              14 + (f.blueFireCoated ? 4 : 0),
               f.facing * 220,
               0,
               'SLASH',
@@ -799,7 +799,7 @@ export class ArenaWorld {
           f.activeAttackTimer = 0.28;
           f.attackCooldown = 1.45;
           this.sound?.playWeaponClash();
-          this.damageFighter(enemy, f.slot, 22, f.facing * 420, -160, 'BLUNT', f.x);
+          this.damageFighter(enemy, f.slot, 24, f.facing * 440, -160, 'BLUNT', f.x);
           this.spawnBurstParticles(enemy.x, enemy.y - 20, '#facc15', 14, 240, 'spark');
           this.addLog(`Sniper cracked ${enemy.def.name} with a heavy rifle-butt strike!`, f.def.color);
           break;
@@ -814,6 +814,8 @@ export class ArenaWorld {
 
       case 'glass': {
         f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.24;
+        f.activeAttackTimer = 0.24;
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
         this.sound?.playGlassRise();
         this.spawnProjectile({
@@ -821,11 +823,11 @@ export class ArenaWorld {
           kind: 'GLASS_DAGGER',
           x: f.x + f.facing * 32,
           y: f.y - 28,
-          vx: dir.x * 590,
-          vy: dir.y * 590,
+          vx: dir.x * 620,
+          vy: dir.y * 620,
           radius: 9,
-          damage: 12,
-          knockback: 150,
+          damage: 8,
+          knockback: 110,
           isMetallic: false,
           blueFireCoated: f.blueFireCoated,
           gravity: 25,
@@ -838,8 +840,8 @@ export class ArenaWorld {
       case 'plier': {
         // Giant Articulated Pincer Jaw CHOMP: cuts mid-air projectiles, crushes glass, snaps blades!
         f.attackStyle = 'CHOMP';
-        f.attackAnimDuration = 0.38;
-        f.activeAttackTimer = 0.38;
+        f.attackAnimDuration = 0.40;
+        f.activeAttackTimer = 0.40;
         f.vx += f.facing * 125;
         this.sound?.playSnap();
         const jawX = f.x + f.facing * 72;
@@ -887,7 +889,7 @@ export class ArenaWorld {
               true
             );
           }
-          this.damageFighter(enemy, f.slot, 20, f.facing * 240, 0, 'SLASH', f.x, f.blueFireCoated);
+          this.damageFighter(enemy, f.slot, 30, f.facing * 280, 0, 'SLASH', f.x, f.blueFireCoated);
         }
         break;
       }
@@ -895,13 +897,13 @@ export class ArenaWorld {
       case 'blue_fire': {
         // Balanced Focused 3-Tongue Blue Flame Jet (with per-hit fire i-frames so bursts don't instant-delete!)
         f.attackStyle = 'CAST_PALM';
-        f.attackAnimDuration = 0.34;
-        f.activeAttackTimer = 0.34;
+        f.attackAnimDuration = 0.26;
+        f.activeAttackTimer = 0.26;
         this.sound?.playFlameRoar();
         const baseAng = f.aimAngle;
         for (let k = 0; k < 3; k++) {
           const spread = (k - 1) * 0.05;
-          const spd = 510 - k * 34;
+          const spd = 530 - k * 34;
           const ang = baseAng + spread;
           this.spawnProjectile({
             ownerSlot: f.slot,
@@ -910,9 +912,9 @@ export class ArenaWorld {
             y: f.y - 28 + Math.sin(ang) * (10 + k * 4),
             vx: Math.cos(ang) * spd,
             vy: Math.sin(ang) * spd * 0.3,
-            radius: 12 + k * 2,
-            damage: 12,
-            knockback: 115,
+            radius: 11 + k * 2,
+            damage: 7,
+            knockback: 95,
             isMetallic: false,
             blueFireCoated: true,
             gravity: 0,
@@ -926,8 +928,8 @@ export class ArenaWorld {
       case 'magnet': {
         // Ferromagnetic Throw: Pull ANY metallic weapon within 380px radius and fling it across the arena!
         f.attackStyle = 'THRUST';
-        f.attackAnimDuration = 0.28;
-        f.activeAttackTimer = 0.28;
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
         const loose = this.droppedWeapons.find(
           (w) => w.isMetallic && Math.hypot(w.x - f.x, w.y - f.y) < 380
         );
@@ -942,11 +944,11 @@ export class ArenaWorld {
             kind: 'THROWN_WEAPON',
             x: f.x + f.facing * 28,
             y: f.y - 26,
-            vx: dir.x * 720,
-            vy: dir.y * 720,
+            vx: dir.x * 740,
+            vy: dir.y * 740,
             radius: 12,
-            damage: 22,
-            knockback: 290,
+            damage: 32,
+            knockback: 340,
             isMetallic: true,
             blueFireCoated: loose.blueFireCoated,
             gravity: 120,
@@ -966,11 +968,11 @@ export class ArenaWorld {
             kind: 'MAGNET_BOLT',
             x: f.x + f.facing * 28,
             y: f.y - 26,
-            vx: dir.x * 520,
-            vy: dir.y * 520,
-            radius: 8,
-            damage: 12,
-            knockback: 210,
+            vx: dir.x * 540,
+            vy: dir.y * 540,
+            radius: 9,
+            damage: 18,
+            knockback: 260,
             isMetallic: false,
             blueFireCoated: f.blueFireCoated,
             gravity: 0,
@@ -984,8 +986,8 @@ export class ArenaWorld {
       case 'portal': {
         // If own portal pair exists, fire straight into own orange portal to snipe enemy's back!
         f.attackStyle = 'CAST_PALM';
-        f.attackAnimDuration = 0.26;
-        f.activeAttackTimer = 0.26;
+        f.attackAnimDuration = 0.24;
+        f.activeAttackTimer = 0.24;
         const ownPortal = this.portals.find((p) => p.ownerSlot === f.slot);
         const aimDest = ownPortal ? ownPortal.orange : targetPos;
         const dir = normalize(aimDest.x - f.x, aimDest.y - (f.y - 26));
@@ -994,11 +996,11 @@ export class ArenaWorld {
           kind: 'MAGNET_BOLT',
           x: f.x + f.facing * 28,
           y: f.y - 26,
-          vx: dir.x * 590,
-          vy: dir.y * 590,
+          vx: dir.x * 610,
+          vy: dir.y * 610,
           radius: 7,
-          damage: 12,
-          knockback: 165,
+          damage: 8,
+          knockback: 140,
           isMetallic: false,
           blueFireCoated: f.blueFireCoated,
           gravity: 0,
@@ -1011,8 +1013,8 @@ export class ArenaWorld {
       case 'rubber': {
         // Long stretchy rubber club whip with spring-loaded elastic snap!
         f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.32;
-        f.activeAttackTimer = 0.32;
+        f.attackAnimDuration = 0.22;
+        f.activeAttackTimer = 0.22;
         f.stretchScaleX = 1.35;
         f.stretchScaleY = 0.78;
         this.sound?.playBoing();
@@ -1023,8 +1025,8 @@ export class ArenaWorld {
           this.damageFighter(
             enemy,
             f.slot,
-            18,
-            f.facing * 290,
+            14,
+            f.facing * 260,
             -80,
             'BLUNT',
             f.x,
@@ -1037,19 +1039,19 @@ export class ArenaWorld {
 
       case 'gravity': {
         f.attackStyle = 'CAST_PALM';
-        f.attackAnimDuration = 0.28;
-        f.activeAttackTimer = 0.28;
+        f.attackAnimDuration = 0.30;
+        f.activeAttackTimer = 0.30;
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 26));
         this.spawnProjectile({
           ownerSlot: f.slot,
           kind: 'MAGNET_BOLT',
           x: f.x + f.facing * 28,
           y: f.y - 26,
-          vx: dir.x * 490,
-          vy: dir.y * 490,
+          vx: dir.x * 510,
+          vy: dir.y * 510,
           radius: 9,
-          damage: 13,
-          knockback: 230,
+          damage: 18,
+          knockback: 280,
           isMetallic: false,
           blueFireCoated: f.blueFireCoated,
           gravity: 0,
@@ -1062,14 +1064,14 @@ export class ArenaWorld {
       case 'bulwark': {
         // Heavy Steel Shield Bash!
         f.attackStyle = 'THRUST';
-        f.attackAnimDuration = 0.32;
-        f.activeAttackTimer = 0.32;
+        f.attackAnimDuration = 0.36;
+        f.activeAttackTimer = 0.36;
         f.vx += f.facing * 205;
         this.sound?.playShieldBlock();
         this.hitClonesInReach(f.slot, f.x + f.facing * 44, f.y - 24, 58);
         if (Math.hypot(enemy.x - (f.x + f.facing * 44), enemy.y - f.y) < 66) {
-          this.damageFighter(enemy, f.slot, 15, f.facing * 320, 0, 'BLUNT', f.x, f.blueFireCoated);
-          this.spawnBurstParticles(enemy.x, enemy.y - 24, '#94a3b8', 10, 180, 'spark');
+          this.damageFighter(enemy, f.slot, 26, f.facing * 380, 0, 'BLUNT', f.x, f.blueFireCoated);
+          this.spawnBurstParticles(enemy.x, enemy.y - 24, '#94a3b8', 14, 210, 'spark');
         }
         break;
       }
@@ -1078,20 +1080,20 @@ export class ArenaWorld {
         // Original + every active Shadow Clone slashes in unison!
         f.attackStyle = f.comboStep % 2 === 0 ? 'SLASH_DOWN' : 'THRUST';
         f.comboStep++;
-        f.attackAnimDuration = 0.28;
-        f.activeAttackTimer = 0.28;
+        f.attackAnimDuration = 0.20;
+        f.activeAttackTimer = 0.20;
         f.vx += f.facing * 145;
         this.sound?.playSlash();
         this.addSlashArc(f.x, f.y - 24, f.facing, 66, '#818cf8');
         if (Math.hypot(enemy.x - (f.x + f.facing * 46), enemy.y - f.y) < 72) {
-          this.damageFighter(enemy, f.slot, 11, f.facing * 165, 0, 'SLASH', f.x, f.blueFireCoated);
+          this.damageFighter(enemy, f.slot, 10, f.facing * 165, 0, 'SLASH', f.x, f.blueFireCoated);
         }
         for (const cl of this.clones) {
           if (cl.ownerSlot === f.slot) {
-            cl.attackAnim = 0.28;
+            cl.attackAnim = 0.20;
             this.addSlashArc(cl.x, cl.y - 24, cl.facing, 58, '#a5b4fc');
             if (Math.hypot(enemy.x - (cl.x + cl.facing * 40), enemy.y - cl.y) < 64) {
-              this.damageFighter(enemy, f.slot, 7, cl.facing * 120, 0, 'SLASH', cl.x, false);
+              this.damageFighter(enemy, f.slot, 6, cl.facing * 120, 0, 'SLASH', cl.x, false);
             }
           }
         }
@@ -1101,8 +1103,8 @@ export class ArenaWorld {
       case 'thunder': {
         // Rapid multi-hit Taser zap!
         f.attackStyle = 'THRUST';
-        f.attackAnimDuration = 0.22;
-        f.activeAttackTimer = 0.22;
+        f.attackAnimDuration = 0.18;
+        f.activeAttackTimer = 0.18;
         f.vx += f.facing * 165;
         this.sound?.playElectroZap();
         this.spawnBurstParticles(f.x + f.facing * 48, f.y - 26, '#fde047', 8, 190, 'spark');
@@ -1112,7 +1114,7 @@ export class ArenaWorld {
           this.damageFighter(
             enemy,
             f.slot,
-            isRubber ? 4 : 8,
+            isRubber ? 4 : 9,
             f.facing * 110,
             0,
             'ELECTRIC',
@@ -1128,8 +1130,8 @@ export class ArenaWorld {
 
       case 'ice': {
         f.attackStyle = 'CAST_PALM';
-        f.attackAnimDuration = 0.28;
-        f.activeAttackTimer = 0.28;
+        f.attackAnimDuration = 0.25;
+        f.activeAttackTimer = 0.25;
         this.sound?.playGlassRise();
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 26));
         this.spawnProjectile({
@@ -1137,11 +1139,11 @@ export class ArenaWorld {
           kind: 'ICE_SHARD',
           x: f.x + f.facing * 28,
           y: f.y - 26,
-          vx: dir.x * 560,
-          vy: dir.y * 560,
+          vx: dir.x * 580,
+          vy: dir.y * 580,
           radius: 7,
-          damage: 11,
-          knockback: 135,
+          damage: 8,
+          knockback: 120,
           isMetallic: false,
           blueFireCoated: false,
           gravity: 20,
@@ -1153,19 +1155,19 @@ export class ArenaWorld {
 
       case 'black_hole': {
         f.attackStyle = 'CAST_PALM';
-        f.attackAnimDuration = 0.3;
-        f.activeAttackTimer = 0.3;
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 26));
         this.spawnProjectile({
           ownerSlot: f.slot,
           kind: 'MAGNET_BOLT',
           x: f.x + f.facing * 28,
           y: f.y - 26,
-          vx: dir.x * 470,
-          vy: dir.y * 470,
-          radius: 9,
-          damage: 13,
-          knockback: -180, // pulls inward!
+          vx: dir.x * 480,
+          vy: dir.y * 480,
+          radius: 10,
+          damage: 20,
+          knockback: -220, // pulls inward!
           isMetallic: false,
           blueFireCoated: f.blueFireCoated,
           gravity: 0,
@@ -1178,15 +1180,15 @@ export class ArenaWorld {
       case 'rocket': {
         // Arcing heavy bazooka rocket!
         f.attackStyle = 'SHOOT_RECOIL';
-        f.attackAnimDuration = 0.3;
-        f.activeAttackTimer = 0.3;
+        f.attackAnimDuration = 0.36;
+        f.activeAttackTimer = 0.36;
         const dx = targetPos.x - f.x;
         const dy = targetPos.y - (f.y - 30);
         const flightT = clamp(Math.abs(dx) / 430, 0.35, 1.15);
         const rGrav = 340;
         const vx = dx / flightT;
         const vy = (dy - 0.5 * rGrav * flightT * flightT) / flightT;
-        f.vx -= f.facing * 145; // launcher kickback
+        f.vx -= f.facing * 160; // heavy launcher kickback
         this.sound?.playSniperShot();
         this.spawnProjectile({
           ownerSlot: f.slot,
@@ -1195,16 +1197,16 @@ export class ArenaWorld {
           y: f.y - 30,
           vx: clamp(vx, -560, 560),
           vy: clamp(vy, -520, 320),
-          radius: 10,
-          damage: 24,
-          knockback: 380,
+          radius: 11,
+          damage: 32,
+          knockback: 440,
           isMetallic: true,
           blueFireCoated: f.blueFireCoated,
           gravity: rGrav,
           life: 2.6,
           color: '#22c55e',
         });
-        this.spawnBurstParticles(f.x + f.facing * 42, f.y - 30, '#cbd5e1', 8, 90, 'smoke');
+        this.spawnBurstParticles(f.x + f.facing * 42, f.y - 30, '#cbd5e1', 10, 110, 'smoke');
         break;
       }
 
@@ -1219,8 +1221,8 @@ export class ArenaWorld {
       case 'scythe': {
         // Wide Grim Reaper Crescent Slash + Soul Harvest Lifesteal!
         f.attackStyle = f.comboStep % 2 === 0 ? 'SLASH_DOWN' : 'SLASH_UP';
-        f.attackAnimDuration = 0.36;
-        f.activeAttackTimer = 0.36;
+        f.attackAnimDuration = 0.38;
+        f.activeAttackTimer = 0.38;
         f.vx += f.facing * 130;
         this.sound?.playSlash();
         this.addSlashArc(f.x + f.facing * 20, f.y - 24, f.facing, 108, '#dc2626');
@@ -1230,16 +1232,16 @@ export class ArenaWorld {
           const hit = this.damageFighter(
             enemy,
             f.slot,
-            16 + (f.blueFireCoated ? 3 : 0),
-            f.facing * 210,
+            26 + (f.blueFireCoated ? 3 : 0),
+            f.facing * 240,
             0,
             'SLASH',
             f.x,
             f.blueFireCoated
           );
           if (hit) {
-            f.hp = Math.min(f.maxHp, f.hp + 4);
-            this.spawnBurstParticles(f.x, f.y - 28, '#fca5a5', 5, 80, 'spark');
+            f.hp = Math.min(f.maxHp, f.hp + 6);
+            this.spawnBurstParticles(f.x, f.y - 28, '#fca5a5', 7, 100, 'spark');
           }
         }
         break;
@@ -1248,8 +1250,8 @@ export class ArenaWorld {
       case 'boomerang': {
         // Returning Aerodynamic Boomerang Arc (hits outbound AND strikes from behind on return!)
         f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.3;
-        f.activeAttackTimer = 0.3;
+        f.attackAnimDuration = 0.26;
+        f.activeAttackTimer = 0.26;
         this.sound?.playSlash();
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
         this.spawnProjectile({
@@ -1257,11 +1259,11 @@ export class ArenaWorld {
           kind: 'BOOMERANG',
           x: f.x + f.facing * 28,
           y: f.y - 28,
-          vx: dir.x * 580,
-          vy: dir.y * 580 - 35,
+          vx: dir.x * 610,
+          vy: dir.y * 610 - 35,
           radius: 13,
-          damage: 11,
-          knockback: 155,
+          damage: 8,
+          knockback: 140,
           isMetallic: false,
           blueFireCoated: f.blueFireCoated,
           gravity: 0,
@@ -1277,18 +1279,18 @@ export class ArenaWorld {
       case 'chainsaw': {
         // Motorized Revving Shredder Bite (chews through Glass/Stone & chips Bulwark steel shield!)
         f.attackStyle = 'THRUST';
-        f.attackAnimDuration = 0.3;
-        f.activeAttackTimer = 0.3;
+        f.attackAnimDuration = 0.38;
+        f.activeAttackTimer = 0.30;
         f.vx += f.facing * 145;
         this.sound?.playSnap();
         const tipX = f.x + f.facing * 68;
-        this.spawnBurstParticles(tipX, f.y - 24, '#fb923c', 10, 210, 'spark');
-        this.hitObstaclesInReach(tipX, f.y - 24, 78, 85);
+        this.spawnBurstParticles(tipX, f.y - 24, '#fb923c', 12, 230, 'spark');
+        this.hitObstaclesInReach(tipX, f.y - 24, 78, 95);
         this.hitClonesInReach(f.slot, tipX, f.y - 24, 76);
         if (Math.hypot(enemy.x - tipX, enemy.y - f.y) < 82) {
           if (enemy.def.id === 'bulwark' && enemy.shieldIntegrity > 0) {
-            enemy.shieldIntegrity = Math.max(0, enemy.shieldIntegrity - 24);
-            this.spawnBurstParticles(enemy.x, enemy.y - 22, '#f97316', 14, 240, 'spark');
+            enemy.shieldIntegrity = Math.max(0, enemy.shieldIntegrity - 32);
+            this.spawnBurstParticles(enemy.x, enemy.y - 22, '#f97316', 16, 260, 'spark');
             if (enemy.shieldIntegrity <= 0) {
               enemy.shieldBlocking = false;
               enemy.hasWeapon = false;
@@ -1299,8 +1301,8 @@ export class ArenaWorld {
           this.damageFighter(
             enemy,
             f.slot,
-            15 + (f.blueFireCoated ? 3 : 0),
-            f.facing * 195,
+            30 + (f.blueFireCoated ? 4 : 0),
+            f.facing * 240,
             0,
             'SLASH',
             f.x,
@@ -1313,8 +1315,8 @@ export class ArenaWorld {
       case 'sonic': {
         // Expanding Concentric Acoustic Sonic Ring (shatters Glass & pierces clones!)
         f.attackStyle = 'CAST_PALM';
-        f.attackAnimDuration = 0.28;
-        f.activeAttackTimer = 0.28;
+        f.attackAnimDuration = 0.30;
+        f.activeAttackTimer = 0.30;
         this.sound?.playPortalWarp();
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
         this.spawnProjectile({
@@ -1322,11 +1324,11 @@ export class ArenaWorld {
           kind: 'SONIC_WAVE',
           x: f.x + f.facing * 32,
           y: f.y - 28,
-          vx: dir.x * 570,
-          vy: dir.y * 570,
-          radius: 14,
-          damage: 12,
-          knockback: 235,
+          vx: dir.x * 580,
+          vy: dir.y * 580,
+          radius: 15,
+          damage: 22,
+          knockback: 320,
           isMetallic: false,
           blueFireCoated: false,
           gravity: 0,
@@ -1341,8 +1343,8 @@ export class ArenaWorld {
       case 'venom': {
         // Corrosive Venom Dart / Fang Spit (applies Poison DoT + 20% slow!)
         f.attackStyle = 'THRUST';
-        f.attackAnimDuration = 0.3;
-        f.activeAttackTimer = 0.3;
+        f.attackAnimDuration = 0.26;
+        f.activeAttackTimer = 0.26;
         this.sound?.playSlash();
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
         this.spawnProjectile({
@@ -1350,11 +1352,11 @@ export class ArenaWorld {
           kind: 'VENOM_GLOB',
           x: f.x + f.facing * 36,
           y: f.y - 28,
-          vx: dir.x * 560,
-          vy: dir.y * 560,
+          vx: dir.x * 580,
+          vy: dir.y * 580,
           radius: 8.5,
-          damage: 11,
-          knockback: 145,
+          damage: 7,
+          knockback: 120,
           isMetallic: false,
           blueFireCoated: false,
           gravity: 55,
@@ -1367,8 +1369,8 @@ export class ArenaWorld {
       case 'wind': {
         // War Tessen Fan Gale Cutter (extinguishes Blue Fire along flight path!)
         f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.3;
-        f.activeAttackTimer = 0.3;
+        f.attackAnimDuration = 0.24;
+        f.activeAttackTimer = 0.24;
         this.sound?.playSlash();
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
         this.spawnProjectile({
@@ -1376,11 +1378,11 @@ export class ArenaWorld {
           kind: 'WIND_BLADE',
           x: f.x + f.facing * 32,
           y: f.y - 28,
-          vx: dir.x * 610,
-          vy: dir.y * 610,
+          vx: dir.x * 640,
+          vy: dir.y * 640,
           radius: 13,
-          damage: 12,
-          knockback: 230,
+          damage: 8,
+          knockback: 200,
           isMetallic: false,
           blueFireCoated: false,
           gravity: 0,
@@ -1393,9 +1395,9 @@ export class ArenaWorld {
       case 'spear': {
         // Long-Reach 126px Dragon Polearm Thrust!
         f.attackStyle = 'THRUST';
-        f.attackAnimDuration = 0.32;
-        f.activeAttackTimer = 0.32;
-        f.vx += f.facing * 115;
+        f.attackAnimDuration = 0.24;
+        f.activeAttackTimer = 0.24;
+        f.vx += f.facing * 125;
         this.sound?.playSlash();
         const spearTipX = f.x + f.facing * 92;
         this.laserTracers.push({
@@ -1427,8 +1429,8 @@ export class ArenaWorld {
       case 'whip': {
         // Long Segmented Iron Chain Crack (168px mid-range lash!)
         f.attackStyle = 'THRUST';
-        f.attackAnimDuration = 0.34;
-        f.activeAttackTimer = 0.34;
+        f.attackAnimDuration = 0.24;
+        f.activeAttackTimer = 0.24;
         this.sound?.playSnap();
         const whipTipX = f.x + f.facing * 155;
         const whipTipY = f.y - 24;
@@ -1451,10 +1453,10 @@ export class ArenaWorld {
       }
 
       case 'laser': {
-        // Crisp 0.20s Prism Charge -> Instant Lightspeed Laser Ray!
+        // Crisp 0.24s Prism Charge -> Instant Lightspeed Laser Ray!
         f.windupType = 'LASER_CHARGE';
-        f.windupMax = 0.20;
-        f.windupTimer = 0.20;
+        f.windupMax = 0.24;
+        f.windupTimer = 0.24;
         f.laserTarget = { ...targetPos };
         break;
       }
@@ -1462,8 +1464,8 @@ export class ArenaWorld {
       case 'earth': {
         // Heavy Arcing Granite Boulder Hurl!
         f.attackStyle = 'CAST_PALM';
-        f.attackAnimDuration = 0.34;
-        f.activeAttackTimer = 0.34;
+        f.attackAnimDuration = 0.40;
+        f.activeAttackTimer = 0.40;
         this.sound?.playGlassRise();
         const dx = targetPos.x - f.x;
         const dy = targetPos.y - (f.y - 32);
@@ -1478,9 +1480,9 @@ export class ArenaWorld {
           y: f.y - 32,
           vx: clamp(vx, -560, 560),
           vy: clamp(vy, -520, 260),
-          radius: 13,
-          damage: 26,
-          knockback: 340,
+          radius: 14,
+          damage: 34,
+          knockback: 400,
           isMetallic: false,
           blueFireCoated: f.blueFireCoated,
           gravity: bGrav,
@@ -1494,8 +1496,8 @@ export class ArenaWorld {
       case 'water': {
         // High-Pressure Hydro Jet (extinguishes Blue Fire & washes Acid!)
         f.attackStyle = 'CAST_PALM';
-        f.attackAnimDuration = 0.3;
-        f.activeAttackTimer = 0.3;
+        f.attackAnimDuration = 0.24;
+        f.activeAttackTimer = 0.24;
         this.sound?.playFlameRoar();
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
         this.spawnProjectile({
@@ -1503,11 +1505,11 @@ export class ArenaWorld {
           kind: 'WATER_JET',
           x: f.x + f.facing * 30,
           y: f.y - 28,
-          vx: dir.x * 610,
-          vy: dir.y * 610,
-          radius: 11,
-          damage: 12,
-          knockback: 225,
+          vx: dir.x * 630,
+          vy: dir.y * 630,
+          radius: 10,
+          damage: 8,
+          knockback: 180,
           isMetallic: false,
           blueFireCoated: false,
           gravity: 35,
@@ -1518,10 +1520,10 @@ export class ArenaWorld {
       }
 
       case 'shadow': {
-        // Swift Twin Umbra Sickle Slash (+5 Backstab bonus from behind!)
+        // Swift Twin Umbra Sickle Slash (+6 Backstab bonus from behind!)
         f.attackStyle = f.comboStep % 2 === 0 ? 'SLASH_DOWN' : 'SLASH_UP';
-        f.attackAnimDuration = 0.25;
-        f.activeAttackTimer = 0.25;
+        f.attackAnimDuration = 0.18;
+        f.activeAttackTimer = 0.18;
         f.vx += f.facing * 155;
         this.sound?.playSlash();
         this.addSlashArc(f.x + f.facing * 14, f.y - 24, f.facing, 68, '#6366f1');
@@ -1531,7 +1533,7 @@ export class ArenaWorld {
           this.damageFighter(
             enemy,
             f.slot,
-            (isBackstab ? 17 : 12) + (f.blueFireCoated ? 3 : 0),
+            (isBackstab ? 18 : 12) + (f.blueFireCoated ? 3 : 0),
             f.facing * 180,
             0,
             'SLASH',
@@ -1545,8 +1547,8 @@ export class ArenaWorld {
       case 'yo_yo': {
         // Tethered Buzzsaw Yo-Yo Out-and-Back Whip!
         f.attackStyle = 'THRUST';
-        f.attackAnimDuration = 0.34;
-        f.activeAttackTimer = 0.34;
+        f.attackAnimDuration = 0.26;
+        f.activeAttackTimer = 0.26;
         this.sound?.playSlash();
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
         this.spawnProjectile({
@@ -1554,11 +1556,11 @@ export class ArenaWorld {
           kind: 'YOYO_DISK',
           x: f.x + f.facing * 26,
           y: f.y - 28,
-          vx: dir.x * 640,
-          vy: dir.y * 640,
-          radius: 12,
-          damage: 11,
-          knockback: 165,
+          vx: dir.x * 660,
+          vy: dir.y * 660,
+          radius: 11,
+          damage: 8,
+          knockback: 140,
           isMetallic: true,
           blueFireCoated: f.blueFireCoated,
           gravity: 0,
@@ -1582,8 +1584,8 @@ export class ArenaWorld {
       case 'time': {
         // Golden Clock-Hand Chrono Needle Bolt (inflicts Chrono Slow!)
         f.attackStyle = 'THRUST';
-        f.attackAnimDuration = 0.28;
-        f.activeAttackTimer = 0.28;
+        f.attackAnimDuration = 0.26;
+        f.activeAttackTimer = 0.26;
         this.sound?.playParry();
         const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
         this.spawnProjectile({
@@ -1591,11 +1593,11 @@ export class ArenaWorld {
           kind: 'CHRONO_BOLT',
           x: f.x + f.facing * 30,
           y: f.y - 28,
-          vx: dir.x * 600,
-          vy: dir.y * 600,
+          vx: dir.x * 620,
+          vy: dir.y * 620,
           radius: 8,
-          damage: 12,
-          knockback: 155,
+          damage: 8,
+          knockback: 130,
           isMetallic: true,
           blueFireCoated: f.blueFireCoated,
           gravity: 0,
@@ -1608,7 +1610,7 @@ export class ArenaWorld {
       case 'alchemist': {
         // Volatile Bouncing Alchemical Brew Flask (Fire / Cryo / Shock)!
         f.attackStyle = 'CAST_PALM';
-        f.attackAnimDuration = 0.32;
+        f.attackAnimDuration = 0.36;
         f.activeAttackTimer = 0.32;
         this.sound?.playGlassRise();
         const brews: Array<'FIRE' | 'CRYO' | 'SHOCK'> = ['FIRE', 'CRYO', 'SHOCK'];
@@ -1627,9 +1629,9 @@ export class ArenaWorld {
           y: f.y - 30,
           vx: clamp(vx, -540, 540),
           vy: clamp(vy, -500, 260),
-          radius: 10,
-          damage: 14,
-          knockback: 220,
+          radius: 11,
+          damage: 28,
+          knockback: 320,
           isMetallic: false,
           blueFireCoated: f.blueFireCoated,
           gravity: aGrav,
@@ -3549,8 +3551,8 @@ export class ArenaWorld {
         vx: dir.x * 1650,
         vy: dir.y * 1650,
         radius: 6,
-        damage: 36,
-        knockback: 420,
+        damage: 40,
+        knockback: 440,
         isMetallic: true,
         blueFireCoated: f.blueFireCoated,
         gravity: 0,
@@ -3559,7 +3561,7 @@ export class ArenaWorld {
       });
 
       this.spawnBurstParticles(muzzleX, muzzleY, '#facc15', 18, 280, 'spark');
-      this.screenShake = 8;
+      this.screenShake = 9;
       f.laserTarget = null;
     } else if (type === 'LASER_CHARGE') {
       if (!f.hasWeapon || f.weaponBroken) return;
@@ -3570,8 +3572,8 @@ export class ArenaWorld {
       f.attackAnimDuration = 0.24;
       f.activeAttackTimer = 0.24;
       this.sound?.playSniperShot();
-      this.firePrismLaserRay(f, angle, 28);
-      this.screenShake = Math.max(this.screenShake, 6);
+      this.firePrismLaserRay(f, angle, 34);
+      this.screenShake = Math.max(this.screenShake, 8);
       f.laserTarget = null;
     } else if (type === 'HAMMER_SLAM') {
       if (!f.hasWeapon) return;
@@ -3851,12 +3853,13 @@ export class ArenaWorld {
     const enemy = this.fighters[ownerSlot === 0 ? 1 : 0];
     if (Math.hypot(enemy.x - x, enemy.y - 20 - y) < radius) {
       const pushDir = enemy.x >= x ? 1 : -1;
+      this.screenShake = Math.max(this.screenShake, 8);
       const dealt = this.damageFighter(
         enemy,
         ownerSlot,
-        13,
-        pushDir * 210,
-        -120,
+        22,
+        pushDir * 280,
+        -140,
         brew === 'SHOCK' ? 'ELECTRIC' : brew === 'FIRE' ? 'FIRE' : 'SLASH',
         x,
         blueFire || brew === 'FIRE'
