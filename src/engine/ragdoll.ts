@@ -701,7 +701,7 @@ export function updateProceduralIKSkeleton(
 
   // Smooth elastic whip extension for Rubber only during active club swing
   const armScale =
-    id === 'rubber' && atkProgress >= 0 ? 1 + Math.sin(atkProgress * Math.PI) * 0.55 : 1;
+    id === 'rubber' && atkProgress >= 0 ? 1 + Math.sin(atkProgress * Math.PI) * 0.32 : 1;
 
   if (f.surrendered) {
     // Hands raised cleanly above head in classic stickman "I surrender" pose (01:14 in video!)
@@ -859,7 +859,7 @@ export function updateProceduralIKSkeleton(
     // ---- ELASTIC RUBBER CLUB WHIP & SLINGSHOT ----
     if (smoothAtk >= 0) {
       const whipProgress = Math.sin(atkProgress * Math.PI);
-      const extend = whipProgress * 52;
+      const extend = whipProgress * 36;
       const swingAngle = f.aimAngle + Math.sin(atkProgress * Math.PI) * 0.75 * dir;
       desiredWeaponAngle = swingAngle;
       rawHandR = {

@@ -429,7 +429,7 @@ export class FighterAI {
 
       if (me.specialCooldown <= 0 && p.horizDist > 75) {
         cmd.specialAbility = true;
-      } else if (me.attackCooldown <= 0 && p.distToTarget < 175) {
+      } else if (me.attackCooldown <= 0 && p.distToTarget < 150) {
         cmd.primaryAttack = true;
       }
       if (hazardEscapeDir !== 0 && cmd.moveDir === 0) cmd.moveDir = hazardEscapeDir;

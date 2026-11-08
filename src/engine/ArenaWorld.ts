@@ -1013,21 +1013,21 @@ export class ArenaWorld {
       case 'rubber': {
         // Long stretchy rubber club whip with spring-loaded elastic snap!
         f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.22;
-        f.activeAttackTimer = 0.22;
-        f.stretchScaleX = 1.35;
-        f.stretchScaleY = 0.78;
+        f.attackAnimDuration = 0.24;
+        f.activeAttackTimer = 0.24;
+        f.stretchScaleX = 1.25;
+        f.stretchScaleY = 0.82;
         this.sound?.playBoing();
-        const reach = 145;
+        const reach = 125;
         this.addSlashArc(f.x, f.y - 24, f.facing, reach * 0.9, '#f472b6');
-        this.hitClonesInReach(f.slot, f.x + f.facing * 85, f.y - 24, 88);
-        if (Math.hypot(enemy.x - (f.x + f.facing * 82), enemy.y - f.y) < 98) {
+        this.hitClonesInReach(f.slot, f.x + f.facing * 72, f.y - 24, 76);
+        if (Math.hypot(enemy.x - (f.x + f.facing * 70), enemy.y - f.y) < 86) {
           this.damageFighter(
             enemy,
             f.slot,
-            14,
-            f.facing * 260,
-            -80,
+            11,
+            f.facing * 210,
+            -70,
             'BLUNT',
             f.x,
             f.blueFireCoated,
@@ -1114,15 +1114,15 @@ export class ArenaWorld {
           this.damageFighter(
             enemy,
             f.slot,
-            isRubber ? 4 : 9,
+            isRubber ? 6 : 9,
             f.facing * 110,
             0,
             'ELECTRIC',
             f.x,
             f.blueFireCoated
           );
-          if (!isRubber && enemy.stunTimer <= 0 && Math.random() < 0.45) {
-            this.applyElectroStun(enemy, 0.8);
+          if (enemy.stunTimer <= 0 && Math.random() < (isRubber ? 0.25 : 0.45)) {
+            this.applyElectroStun(enemy, isRubber ? 0.35 : 0.8);
           }
         }
         break;
@@ -1933,14 +1933,14 @@ export class ArenaWorld {
 
       case 'rubber': {
         // Controlled Acrobatic Elastic Slingshot Lunge + Whip!
-        f.vx = f.facing * 480;
-        f.vy = -280;
+        f.vx = f.facing * 360;
+        f.vy = -210;
         f.grounded = false;
         f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.44;
-        f.activeAttackTimer = 0.44;
-        f.stretchScaleX = 1.45;
-        f.stretchScaleY = 0.72;
+        f.attackAnimDuration = 0.40;
+        f.activeAttackTimer = 0.40;
+        f.stretchScaleX = 1.35;
+        f.stretchScaleY = 0.76;
         this.sound?.playBoing();
         break;
       }
@@ -1973,9 +1973,7 @@ export class ArenaWorld {
             life: 2.6,
             maxLife: 2.6,
           });
-          if (enemy.def.id !== 'rubber') {
-            this.damageFighter(enemy, f.slot, 14, 0, 320, 'BLUNT', enemy.x);
-          }
+          this.damageFighter(enemy, f.slot, enemy.def.id === 'rubber' ? 10 : 14, 0, 320, 'BLUNT', enemy.x);
           this.screenShake = 8;
           this.addLog(`Gravity pinned ${enemy.def.name} under 10x gravitational weight!`, f.def.color, true);
         }
@@ -2145,12 +2143,12 @@ export class ArenaWorld {
 
       case 'hammer': {
         // Short forward hop + Colossal Earthquake Wind-Up!
-        f.vx = f.facing * 190;
-        f.vy = -240;
+        f.vx = f.facing * 160;
+        f.vy = -220;
         f.grounded = false;
         f.windupType = 'HAMMER_SLAM';
-        f.windupMax = 0.36;
-        f.windupTimer = 0.36;
+        f.windupMax = 0.44;
+        f.windupTimer = 0.44;
         break;
       }
 
@@ -2846,20 +2844,20 @@ export class ArenaWorld {
       }
 
       case 'rubber': {
-        // Super-Bounce Pinball Gatling - high-speed invincible pinball bouncing across walls & floor!
+        // Super-Bounce Pinball Gatling - high-speed pinball bouncing across walls & floor!
         f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.6;
-        f.activeAttackTimer = 0.6;
-        f.invulnTimer = 1.4;
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        f.invulnTimer = 0.35;
         this.sound?.playBoing();
-        f.stretchScaleX = 1.5;
-        f.stretchScaleY = 0.6;
-        f.vx = f.facing * 820;
-        f.vy = -640;
+        f.stretchScaleX = 1.35;
+        f.stretchScaleY = 0.75;
+        f.vx = f.facing * 640;
+        f.vy = -500;
         f.grounded = false;
-        this.screenShake = 16;
-        this.damageFighter(enemy, f.slot, 32, f.facing * 420, -320, 'BLUNT', f.x);
-        this.spawnBurstParticles(enemy.x, enemy.y - 20, '#ec4899', 24, 300, 'ring');
+        this.screenShake = 12;
+        this.damageFighter(enemy, f.slot, 22, f.facing * 340, -260, 'BLUNT', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 20, '#ec4899', 18, 240, 'ring');
         break;
       }
 
@@ -3092,27 +3090,27 @@ export class ArenaWorld {
       case 'hammer': {
         // Seismic Continent Splitter - colossal 2-hand slam splitting the floor into seismic shockwaves!
         f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.6;
-        f.activeAttackTimer = 0.6;
-        f.vx = f.facing * 220;
-        f.vy = -380;
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        f.vx = f.facing * 180;
+        f.vy = -320;
         f.grounded = false;
         this.sound?.playHammerSlam();
-        this.screenShake = 24;
+        this.screenShake = 16;
         this.shockwaves.push({
           ownerSlot: f.slot,
           x: f.x + f.facing * 50,
           y: ARENA_FLOOR_Y,
           radius: 10,
-          maxRadius: 360,
-          speed: 720,
+          maxRadius: 280,
+          speed: 620,
           color: '#fbbf24',
           groundOnly: true,
-          hitSlots: new Set<number>([f.slot]),
+          hitSlots: new Set<number>([f.slot, enemy.slot]),
         });
-        this.hitObstaclesInReach(f.x + f.facing * 60, ARENA_FLOOR_Y - 50, 160, 100);
-        this.damageFighter(enemy, f.slot, 36, f.facing * 440, -420, 'HAMMER_SEISMIC', f.x);
-        this.spawnBurstParticles(f.x + f.facing * 50, ARENA_FLOOR_Y - 8, '#d97706', 30, 340, 'spark');
+        this.hitObstaclesInReach(f.x + f.facing * 60, ARENA_FLOOR_Y - 50, 150, 80);
+        this.damageFighter(enemy, f.slot, 26, f.facing * 340, -280, 'HAMMER_SEISMIC', f.x);
+        this.spawnBurstParticles(f.x + f.facing * 50, ARENA_FLOOR_Y - 8, '#d97706', 22, 260, 'spark');
         break;
       }
 
@@ -3593,54 +3591,58 @@ export class ArenaWorld {
     const impactX = clamp(f.x + f.facing * 76, ARENA_PADDING_X + 24, ARENA_WIDTH - ARENA_PADDING_X - 24);
     const impactY = ARENA_FLOOR_Y;
 
-    this.screenShake = isAnchor ? 22 : 20;
-    this.spawnBurstParticles(impactX, impactY - 6, isAnchor ? '#38bdf8' : '#fbbf24', 32, 340, 'spark');
-    this.spawnBurstParticles(impactX, impactY - 8, '#78716c', 26, 260, 'shard');
-    this.spawnBurstParticles(impactX, impactY - 10, '#94a3b8', 22, 180, 'smoke');
+    this.screenShake = isAnchor ? 16 : 14;
+    this.spawnBurstParticles(impactX, impactY - 6, isAnchor ? '#38bdf8' : '#fbbf24', 24, 280, 'spark');
+    this.spawnBurstParticles(impactX, impactY - 8, '#78716c', 18, 220, 'shard');
+    this.spawnBurstParticles(impactX, impactY - 10, '#94a3b8', 16, 150, 'smoke');
 
     // Ground fracture fissure decal on arena floor
     this.groundFractures.push({
       id: this.nextEntityId++,
       x: impactX,
       y: impactY,
-      width: isAnchor ? 170 : 190,
+      width: isAnchor ? 150 : 160,
       color: isAnchor ? '#1e3a8a' : '#b45309',
-      life: 2.8,
-      maxLife: 2.8,
+      life: 2.2,
+      maxLife: 2.2,
     });
 
     // 1) Destroy ALL Obstacles in wide slam reach!
     for (let i = this.obstacles.length - 1; i >= 0; i--) {
       const obs = this.obstacles[i];
-      if (Math.abs(obs.x + obs.width * 0.5 - impactX) < 185) {
+      if (Math.abs(obs.x + obs.width * 0.5 - impactX) < 160) {
         this.shatterGlassObstacle(obs, f.facing);
         this.addLog(`SMASH! ${f.def.name} obliterated the barrier in a single ground slam!`, f.def.color, true);
       }
     }
 
-    this.hitClonesInReach(f.slot, impactX, f.y - 10, 120);
+    this.hitClonesInReach(f.slot, impactX, f.y - 10, 110);
 
     // 2) Direct Warhammer / Naval Anchor hit!
     const enemyPelvisH = enemy.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT;
-    if (Math.hypot(enemy.x - impactX, enemy.y - (ARENA_FLOOR_Y - enemyPelvisH)) < 118) {
+    let hitDirectly = false;
+    if (Math.hypot(enemy.x - impactX, enemy.y - (ARENA_FLOOR_Y - enemyPelvisH)) < 114) {
+      hitDirectly = true;
       if (!isAnchor && enemy.def.id === 'bulwark' && enemy.shieldIntegrity > 0) {
-        enemy.shieldIntegrity = 0;
-        enemy.shieldBlocking = false;
-        enemy.hasWeapon = false;
-        enemy.weaponBroken = true;
-        enemy.panicMeter += 65;
-        this.spawnBurstParticles(enemy.x, enemy.y - 16, '#cbd5e1', 32, 380, 'shard');
-        this.triggerEpicSlowMo(0.38);
-        this.addLog(
-          `CATACLYSM! Hammer shattered Bulwark's steel Tower Shield in one swing!`,
-          f.def.color,
-          true
-        );
+        // Heavy shield chip damage instead of 1-shotting 100% integrity:
+        enemy.shieldIntegrity = Math.max(0, enemy.shieldIntegrity - 45);
+        if (enemy.shieldIntegrity <= 0) {
+          enemy.shieldBlocking = false;
+          enemy.hasWeapon = false;
+          enemy.weaponBroken = true;
+          enemy.panicMeter += 65;
+          this.spawnBurstParticles(enemy.x, enemy.y - 16, '#cbd5e1', 28, 340, 'shard');
+          this.triggerEpicSlowMo(0.32);
+          this.addLog(`CRACK! Hammer shattered Bulwark's steel shield!`, f.def.color, true);
+        } else {
+          this.spawnBurstParticles(enemy.x, enemy.y - 16, '#cbd5e1', 14, 220, 'spark');
+          this.addLog(`Hammer struck Bulwark's shield heavily (-45 integrity)!`, f.def.color);
+        }
       }
 
       if (enemy.def.id === 'rubber') {
-        const dmg = isAnchor ? 17 : 19;
-        this.damageFighter(enemy, f.slot, dmg, f.facing * 440, -420, 'BLUNT', impactX);
+        const dmg = isAnchor ? 14 : 15;
+        this.damageFighter(enemy, f.slot, dmg, f.facing * 360, -320, 'BLUNT', impactX);
         enemy.stretchScaleY = 0.65;
         enemy.stretchScaleX = 1.45;
         this.sound?.playBoing();
@@ -3649,9 +3651,9 @@ export class ArenaWorld {
         this.damageFighter(
           enemy,
           f.slot,
-          isAnchor ? 34 : 38,
-          kbDir * (isAnchor ? 380 : 440),
-          isAnchor ? -280 : -380,
+          isAnchor ? 28 : 26,
+          kbDir * (isAnchor ? 320 : 340),
+          isAnchor ? -240 : -280,
           'HAMMER_SEISMIC',
           isAnchor ? enemy.x - enemy.facing * 32 : f.x,
           f.blueFireCoated
@@ -3660,16 +3662,20 @@ export class ArenaWorld {
     }
 
     // 3) Spawn Floor Earthquake / Depth-Charge Shockwave!
+    const swHitSlots = new Set<number>([f.slot]);
+    if (hitDirectly) {
+      swHitSlots.add(enemy.slot); // PREVENT DOUBLE-DIP DIRECT HIT + SHOCKWAVE STUN!
+    }
     this.shockwaves.push({
       ownerSlot: f.slot,
       x: impactX,
       y: ARENA_FLOOR_Y,
       radius: 16,
-      maxRadius: isAnchor ? 340 : 380,
-      speed: 680,
+      maxRadius: isAnchor ? 240 : 260,
+      speed: 560,
       color: isAnchor ? '#38bdf8' : '#fbbf24',
       groundOnly: true,
-      hitSlots: new Set<number>([f.slot]),
+      hitSlots: swHitSlots,
     });
   }
 
@@ -3929,17 +3935,17 @@ export class ArenaWorld {
       }
     }
 
-    // Rubber elastic blunt resistance check: absorbs 55% blunt damage and rebounds comically!
+    // Rubber elastic blunt resistance check: absorbs 25% blunt damage and rebounds comically!
     let finalDamage = rawDamage;
     if (victim.def.id === 'rubber' && damageKind === 'BLUNT') {
-      finalDamage = Math.max(1, Math.round(rawDamage * 0.45));
+      finalDamage = Math.max(1, Math.round(rawDamage * 0.75));
       victim.vx = clamp(victim.vx * 0.3 + kbX * 0.95, -460, 460);
       victim.vy = clamp(victim.vy * 0.3 + kbY * 0.95, -440, 440);
-      victim.stretchScaleX = 1.45;
-      victim.stretchScaleY = 0.65;
+      victim.stretchScaleX = 1.35;
+      victim.stretchScaleY = 0.75;
       this.sound?.playBoing();
-      this.spawnBurstParticles(victim.x, victim.y - 18, '#f472b6', 14, 220, 'ring');
-      this.addLog(`BOING! Rubber absorbed 55% blunt damage with elastic rebound!`, '#ec4899');
+      this.spawnBurstParticles(victim.x, victim.y - 18, '#f472b6', 10, 180, 'ring');
+      this.addLog(`BOING! Rubber cushioned 25% blunt damage with elastic rebound!`, '#ec4899');
     }
 
     // Bonus shatter damage if victim is frozen in an Ice Block!
@@ -4678,7 +4684,7 @@ export class ArenaWorld {
           continue;
         }
 
-        // 5B) RUBBER ELASTIC BODY BOUNCE! Projectiles ricochet off Rubber's body!
+        // 5B) RUBBER ELASTIC IMPACT CUSHION (Dampens blunt/standard projectiles, does NOT reflect counter-attack!)
         if (
           target.def.id === 'rubber' &&
           p.kind !== 'SNIPER_BULLET' &&
@@ -4689,21 +4695,26 @@ export class ArenaWorld {
           p.kind !== 'WATER_JET' &&
           p.kind !== 'VENOM_GLOB' &&
           p.kind !== 'SONIC_WAVE' &&
-          p.kind !== 'WIND_BLADE' &&
-          p.reflectedCount < 2
+          p.kind !== 'WIND_BLADE'
         ) {
-          const bounceDir = normalize(shooter.x - p.x, shooter.y - 26 - p.y);
-          const spd = Math.max(540, Math.hypot(p.vx, p.vy) * 0.92);
-          p.vx = bounceDir.x * spd;
-          p.vy = bounceDir.y * spd;
-          p.ownerSlot = target.slot;
-          p.reflectedCount++;
-          target.stretchScaleX = 0.72;
-          target.stretchScaleY = 1.35;
-          target.vx -= bounceDir.x * 130;
+          const hitDir = p.vx >= 0 ? 1 : -1;
+          target.stretchScaleX = 1.3;
+          target.stretchScaleY = 0.72;
+          target.vx += hitDir * 120;
           this.sound?.playBoing();
-          this.spawnBurstParticles(p.x, p.y, '#f472b6', 12, 180, 'ring');
-          this.addLog(`Rubber bounced ${shooter.def.name}'s projectile right off his elastic body!`, target.def.color);
+          this.spawnBurstParticles(p.x, p.y, '#f472b6', 10, 160, 'ring');
+          // Deals 65% cushioned damage to Rubber (35% damage reduction):
+          this.damageFighter(
+            target,
+            p.ownerSlot,
+            Math.max(1, Math.round(p.damage * 0.65)),
+            hitDir * p.knockback * 0.75,
+            -60,
+            'BLUNT',
+            prevX
+          );
+          this.addLog(`Rubber cushioned ${shooter.def.name}'s shot with elastic body!`, target.def.color);
+          this.projectiles.splice(i, 1);
           continue;
         }
 
@@ -5406,22 +5417,31 @@ export class ArenaWorld {
       ) {
         sw.hitSlots.add(enemy.slot);
         if (enemy.def.id === 'rubber') {
-          enemy.vy = -440;
+          enemy.vy = -340;
           enemy.grounded = false;
           this.sound?.playBoing();
+          this.damageFighter(
+            enemy,
+            sw.ownerSlot,
+            8,
+            (enemy.x >= sw.x ? 1 : -1) * 160,
+            -180,
+            'BLUNT',
+            sw.x
+          );
         } else {
-          enemy.stunTimer = Math.max(enemy.stunTimer, 0.85);
+          enemy.stunTimer = Math.max(enemy.stunTimer, 0.35);
           enemy.electroFlash = false;
           this.damageFighter(
             enemy,
             sw.ownerSlot,
-            12,
-            (enemy.x >= sw.x ? 1 : -1) * 180,
-            -240,
+            8,
+            (enemy.x >= sw.x ? 1 : -1) * 160,
+            -190,
             'HAMMER_SEISMIC',
             sw.x
           );
-          this.addLog(`Earthquake shockwave stunned ${enemy.def.name} on the ground!`, '#f59e0b');
+          this.addLog(`Earthquake shockwave staggered ${enemy.def.name}!`, '#f59e0b');
         }
       }
     }
@@ -5725,7 +5745,7 @@ export class ArenaWorld {
             }
           } else if (z.kind === 'ICE_SHEET' && z.ownerSlot !== f.slot) {
             f.slipTimer = 0.25;
-          } else if (z.kind === 'GRAVITY_CRUSH' && z.ownerSlot !== f.slot && f.def.id !== 'rubber') {
+          } else if (z.kind === 'GRAVITY_CRUSH' && z.ownerSlot !== f.slot) {
             f.gravityScale = 10;
             f.gravityTimer = Math.max(f.gravityTimer, 0.2);
           }
@@ -5819,22 +5839,22 @@ export class ArenaWorld {
 
       // Rubber Elastic Lunge Collision while airborne!
       if (f.def.id === 'rubber' && !f.grounded && f.activeAttackTimer > 0.22) {
-        if (Math.hypot(enemy.x - f.x, enemy.y - f.y) < 46) {
+        if (Math.hypot(enemy.x - f.x, enemy.y - f.y) < 42) {
           const isOverhead = f.y < enemy.y - 26;
           this.damageFighter(
             enemy,
             f.slot,
-            16,
-            (f.vx >= 0 ? 1 : -1) * 280,
+            9,
+            (f.vx >= 0 ? 1 : -1) * 190,
             0,
             'BLUNT',
             f.x,
             f.blueFireCoated,
             isOverhead
           );
-          f.vx = -f.vx * 0.55;
-          f.vy = -210;
-          f.activeAttackTimer = 0.14;
+          f.vx = -f.vx * 0.45;
+          f.vy = -180;
+          f.activeAttackTimer = 0.12;
           this.sound?.playBoing();
         }
       }
@@ -5950,8 +5970,8 @@ export class ArenaWorld {
         f.y = minY;
         if (f.gravityScale < 0) {
           f.onCeiling = true;
-          if (impactSpeed > 320 && f.def.id !== 'rubber') {
-            f.hp = Math.max(1, f.hp - 9);
+          if (impactSpeed > 320) {
+            f.hp = Math.max(1, f.hp - (f.def.id === 'rubber' ? 5 : 9));
             this.screenShake = 6;
             this.spawnBurstParticles(f.x, ARENA_TOP + 6, '#c4b5fd', 12, 160, 'spark');
           }
