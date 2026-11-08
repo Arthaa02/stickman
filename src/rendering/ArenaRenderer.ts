@@ -1,3 +1,4 @@
+import { FIGHTER_MAP } from '../data/fighters';
 import {
   ARENA_FLOOR_Y,
   ARENA_HEIGHT,
@@ -1346,7 +1347,86 @@ export class ArenaRenderer {
     const barW = 265;
     const barH = 8;
     const leftX = ARENA_PADDING_X;
-    const barY = 34;
+    const rightX = ARENA_WIDTH - ARENA_PADDING_X - barW;
+    const barY = world.teamBattleState ? 42 : 34;
+
+    // Tour Teaming 3v3 HUD Header
+    if (world.teamBattleState) {
+      const tb = world.teamBattleState;
+      // Left Team Name & Dots
+      ctx.textAlign = 'left';
+      ctx.font = '800 11px Inter, sans-serif';
+      ctx.fillStyle = tb.teamA.team.color;
+      ctx.fillText(`${tb.teamA.team.badge} ${tb.teamA.team.name.toUpperCase()}`, leftX, barY - 17);
+
+      for (let i = 0; i < 3; i++) {
+        const memId = tb.teamA.team.members[i];
+        const memDef = FIGHTER_MAP[memId];
+        const dotX = leftX + 130 + i * 16;
+        const dotY = barY - 21;
+        const isCurrent = i === tb.teamA.currentIndex;
+        const isDead = tb.teamA.eliminated[i];
+
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, isCurrent ? 5.5 : 4, 0, Math.PI * 2);
+        ctx.fillStyle = isDead ? '#475569' : memDef.color;
+        ctx.fill();
+        ctx.strokeStyle = isCurrent ? '#ffffff' : '#cbd5e1';
+        ctx.lineWidth = isCurrent ? 1.8 : 0.8;
+        ctx.stroke();
+
+        if (isDead) {
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(dotX - 3, dotY - 3);
+          ctx.lineTo(dotX + 3, dotY + 3);
+          ctx.moveTo(dotX + 3, dotY - 3);
+          ctx.lineTo(dotX - 3, dotY + 3);
+          ctx.stroke();
+        }
+      }
+
+      // Right Team Name & Dots
+      ctx.textAlign = 'right';
+      ctx.font = '800 11px Inter, sans-serif';
+      ctx.fillStyle = tb.teamB.team.color;
+      ctx.fillText(`${tb.teamB.team.name.toUpperCase()} ${tb.teamB.team.badge}`, rightX + barW, barY - 17);
+
+      for (let i = 0; i < 3; i++) {
+        const memId = tb.teamB.team.members[i];
+        const memDef = FIGHTER_MAP[memId];
+        const dotX = rightX + barW - 130 - (2 - i) * 16;
+        const dotY = barY - 21;
+        const isCurrent = i === tb.teamB.currentIndex;
+        const isDead = tb.teamB.eliminated[i];
+
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, isCurrent ? 5.5 : 4, 0, Math.PI * 2);
+        ctx.fillStyle = isDead ? '#475569' : memDef.color;
+        ctx.fill();
+        ctx.strokeStyle = isCurrent ? '#ffffff' : '#cbd5e1';
+        ctx.lineWidth = isCurrent ? 1.8 : 0.8;
+        ctx.stroke();
+
+        if (isDead) {
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(dotX - 3, dotY - 3);
+          ctx.lineTo(dotX + 3, dotY + 3);
+          ctx.moveTo(dotX + 3, dotY - 3);
+          ctx.lineTo(dotX - 3, dotY + 3);
+          ctx.stroke();
+        }
+      }
+
+      // Sub-label below center
+      ctx.font = '700 9px JetBrains Mono, monospace';
+      ctx.fillStyle = '#6366f1';
+      ctx.textAlign = 'center';
+      ctx.fillText(`BOUT ${tb.boutNumber}/5 • 3v3 RELAY`, ARENA_WIDTH * 0.5, 38);
+    }
 
     ctx.fillStyle = '#f1f5f9';
     ctx.beginPath();
@@ -1402,7 +1482,6 @@ export class ArenaRenderer {
       ctx.fillText(`⚡ ULTIMATE READY!`, leftX, ult0Y + 13);
     }
 
-    const rightX = ARENA_WIDTH - ARENA_PADDING_X - barW;
     ctx.fillStyle = '#f1f5f9';
     ctx.beginPath();
     ctx.roundRect(rightX, barY, barW, barH, 4);

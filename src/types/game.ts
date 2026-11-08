@@ -552,6 +552,62 @@ export interface TournamentState {
   eliminatedIds: Set<FighterId>;
 }
 
+export interface FighterTeam {
+  id: string;
+  name: string;
+  color: string;
+  badge: string;
+  members: [FighterId, FighterId, FighterId];
+}
+
+export interface TeamBattleState {
+  teamA: {
+    team: FighterTeam;
+    currentIndex: number;
+    eliminated: [boolean, boolean, boolean];
+    wins: number;
+  };
+  teamB: {
+    team: FighterTeam;
+    currentIndex: number;
+    eliminated: [boolean, boolean, boolean];
+    wins: number;
+  };
+  boutNumber: number;
+  winnerSlot: 0 | 1 | null;
+  history: Array<{
+    bout: number;
+    winnerId: FighterId;
+    loserId: FighterId;
+    reason: WinReason;
+  }>;
+}
+
+export type TeamTournamentFormat = '8_TEAMS' | '4_TEAMS' | '3_TEAMS';
+
+export interface TeamBracketMatch {
+  id: string;
+  round: 'QF' | 'SF' | 'FINAL' | 'TRI_TOUR';
+  roundIndex: number;
+  label: string;
+  teamA: FighterTeam | null;
+  teamB: FighterTeam | null;
+  winnerTeam: FighterTeam | null;
+  loserTeam: FighterTeam | null;
+  status: 'LOCKED' | 'READY' | 'IN_PROGRESS' | 'COMPLETED';
+  nextMatchId: string | null;
+  nextMatchSlot: 'A' | 'B' | null;
+}
+
+export interface TeamTournamentState {
+  format: TeamTournamentFormat;
+  teams: FighterTeam[];
+  matches: TeamBracketMatch[];
+  activeMatchId: string | null;
+  championTeam: FighterTeam | null;
+  eliminatedTeamIds: Set<string>;
+}
+
 export interface StuckProjectile {
   id: number;
   nodeIndex: number;

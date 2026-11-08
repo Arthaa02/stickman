@@ -8,6 +8,7 @@ import {
   DroppedWeapon,
   FighterId,
   FighterRuntime,
+  FighterTeam,
   FloorZone,
   GlassShard,
   GroundFracture,
@@ -25,6 +26,7 @@ import {
   StagePlatform,
   StageTheme,
   StuckProjectile,
+  TeamBattleState,
   UltimateBanner,
   Vec2,
 } from '../types/game';
@@ -71,6 +73,7 @@ export class ArenaWorld {
   public severedLimbs: SeveredLimb[] = [];
   public stageTheme: StageTheme = 'CLASSIC_WHITE';
   public platforms: StagePlatform[] = [];
+  public teamBattleState?: TeamBattleState;
 
   // Instant Replay ring-buffer
   public replayFrames: ReplayFrame[] = [];
@@ -116,19 +119,53 @@ export class ArenaWorld {
     fighterBId: FighterId,
     bannerTitle = 'CUSTOM DUEL',
     sound: SoundManager | null = null,
-    stageTheme: StageTheme = 'CLASSIC_WHITE'
+    stageTheme: StageTheme = 'CLASSIC_WHITE',
+    teamA?: FighterTeam,
+    teamB?: FighterTeam
   ) {
     this.roundBannerTitle = bannerTitle;
     this.sound = sound;
+
+    if (teamA && teamB) {
+      fighterAId = teamA.members[0];
+      fighterBId = teamB.members[0];
+      this.teamBattleState = {
+        teamA: {
+          team: teamA,
+          currentIndex: 0,
+          eliminated: [false, false, false],
+          wins: 0,
+        },
+        teamB: {
+          team: teamB,
+          currentIndex: 0,
+          eliminated: [false, false, false],
+          wins: 0,
+        },
+        boutNumber: 1,
+        winnerSlot: null,
+        history: [],
+      };
+    }
+
     this.fighters = [
       this.createFighterRuntime(0, fighterAId, ARENA_PADDING_X + 150, 1),
       this.createFighterRuntime(1, fighterBId, ARENA_WIDTH - ARENA_PADDING_X - 150, -1),
     ];
     this.setStageTheme(stageTheme);
-    this.addLog(
-      `Match ready: ${this.fighters[0].def.name} vs ${this.fighters[1].def.name}!`,
-      '#94a3b8'
-    );
+
+    if (teamA && teamB) {
+      this.addLog(
+        `⚔️ 3v3 TEAM BATTLE: ${teamA.name} vs ${teamB.name}! Bout 1: ${this.fighters[0].def.name} vs ${this.fighters[1].def.name}!`,
+        '#38bdf8',
+        true
+      );
+    } else {
+      this.addLog(
+        `Match ready: ${this.fighters[0].def.name} vs ${this.fighters[1].def.name}!`,
+        '#94a3b8'
+      );
+    }
   }
 
   public setStageTheme(theme: StageTheme): void {
@@ -259,7 +296,7 @@ export class ArenaWorld {
     this.addLog('FIGHT! Arena simulation started.', '#22c55e', true);
   }
 
-  public simulateToCompletion(maxSteps = 5400): MatchResult {
+  public simulateToCompletion(maxSteps = 24000): MatchResult {
     this.isRunning = true;
     this.isPaused = false;
     const savedSlowMo = this.autoSlowMoEnabled;
@@ -431,6 +468,106 @@ export class ArenaWorld {
       if (this.refereeCountdown <= 0) {
         const winSlot = this.pendingWinnerSlot;
         const loseSlot = winSlot === 0 ? 1 : 0;
+
+        // Tour Teaming: 3v3 Relay Tag-In Mechanics
+        if (this.teamBattleState) {
+          const losingSide = loseSlot === 0 ? this.teamBattleState.teamA : this.teamBattleState.teamB;
+          const winningSide = winSlot === 0 ? this.teamBattleState.teamA : this.teamBattleState.teamB;
+
+          this.teamBattleState.history.push({
+            bout: this.teamBattleState.boutNumber,
+            winnerId: this.fighters[winSlot].def.id,
+            loserId: this.fighters[loseSlot].def.id,
+            reason: this.pendingWinReason,
+          });
+
+          losingSide.eliminated[losingSide.currentIndex] = true;
+          winningSide.wins++;
+
+          const nextIndex = losingSide.currentIndex + 1;
+          if (nextIndex < 3) {
+            // Deploy next teammate!
+            losingSide.currentIndex = nextIndex;
+            this.teamBattleState.boutNumber++;
+            const nextFighterId = losingSide.team.members[nextIndex];
+            const nextDef = FIGHTER_MAP[nextFighterId];
+
+            this.fighters[loseSlot] = this.createFighterRuntime(
+              loseSlot,
+              nextFighterId,
+              loseSlot === 0 ? ARENA_PADDING_X + 130 : ARENA_WIDTH - ARENA_PADDING_X - 130,
+              loseSlot === 0 ? 1 : -1
+            );
+            const incoming = this.fighters[loseSlot];
+            incoming.y = ARENA_TOP + 30;
+            incoming.vy = 280;
+            incoming.vx = (loseSlot === 0 ? 1 : -1) * 160;
+            incoming.grounded = false;
+
+            // Survivor boost for the winning fighter
+            const survivor = this.fighters[winSlot];
+            survivor.aiState = 'STALKING';
+            survivor.ragdollTimer = 0;
+            survivor.stunTimer = 0;
+            survivor.freezeTimer = 0;
+            survivor.burnTimer = 0;
+            survivor.invulnTimer = 0.6;
+            survivor.hp = Math.min(survivor.maxHp, survivor.hp + survivor.maxHp * 0.35);
+            survivor.smoothHp = survivor.hp;
+            if (!survivor.hasWeapon || survivor.weaponBroken) {
+              survivor.hasWeapon = true;
+              survivor.weaponBroken = false;
+            }
+
+            // Clear hazards for clean new bout
+            this.projectiles = [];
+            this.floorZones = [];
+            this.shockwaves = [];
+            this.groundFractures = [];
+            this.laserTracers = [];
+            this.slashTrails = [];
+            this.clones = [];
+            this.winnerReplyPending = null;
+            this.pendingWinnerSlot = null;
+            this.refereeCountdown = 0;
+
+            this.activeUltimateBanner = {
+              title: `${losingSide.team.name.toUpperCase()}: ${nextDef.name.toUpperCase()} TAGS IN!`,
+              subText: `Bout #${this.teamBattleState.boutNumber}: Fighter ${nextIndex + 1} of 3 leaps in!`,
+              color: losingSide.team.color,
+              timer: 2.2,
+              maxTimer: 2.2,
+            };
+            this.screenShake = 14;
+            this.sound?.playSnap();
+            this.spawnBurstParticles(incoming.x, incoming.y + 40, losingSide.team.color, 30, 260, 'spark');
+            this.addLog(
+              `TAG IN! ${losingSide.team.name} deploys ${nextDef.name} (Fighter ${nextIndex + 1}/3)!`,
+              losingSide.team.color,
+              true
+            );
+            return;
+          } else {
+            // All 3 fighters eliminated! Team match is won!
+            this.teamBattleState.winnerSlot = winSlot;
+            this.result = {
+              winnerSlot: winSlot,
+              winnerId: this.fighters[winSlot].def.id,
+              loserId: this.fighters[loseSlot].def.id,
+              reason: this.pendingWinReason,
+              durationSec: this.elapsedSec,
+              surrenderQuote: this.pendingSurrenderQuote,
+            };
+            this.isRunning = false;
+            this.addLog(
+              `🏆 TEAM VICTORY! ${winningSide.team.name} eliminated all 3 fighters of ${losingSide.team.name}!`,
+              winningSide.team.color,
+              true
+            );
+            return;
+          }
+        }
+
         this.result = {
           winnerSlot: winSlot,
           winnerId: this.fighters[winSlot].def.id,

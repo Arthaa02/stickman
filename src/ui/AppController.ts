@@ -4,8 +4,18 @@ import { ArenaWorld } from '../engine/ArenaWorld';
 import { ArenaRenderer } from '../rendering/ArenaRenderer';
 import { AssetService } from '../services/assetService';
 import { StatsService } from '../services/statsService';
+import { TeamTournamentManager } from '../tournament/TeamTournamentManager';
 import { TournamentManager } from '../tournament/TournamentManager';
-import { BracketMatch, FighterId, PlaybackSpeed, RoundStage, StageTheme } from '../types/game';
+import {
+  BracketMatch,
+  FighterId,
+  FighterTeam,
+  PlaybackSpeed,
+  RoundStage,
+  StageTheme,
+  TeamBracketMatch,
+  TeamTournamentFormat,
+} from '../types/game';
 
 interface MatchupPreset {
   label: string;
@@ -32,11 +42,12 @@ export class AppController {
   private assets: AssetService;
   private sound: SoundManager;
   private tournament: TournamentManager;
+  private teamTournament: TeamTournamentManager;
   private stats: StatsService;
   private world!: ArenaWorld;
   private renderer!: ArenaRenderer;
 
-  private mode: 'TOURNAMENT' | 'SANDBOX' = 'TOURNAMENT';
+  private mode: 'TOURNAMENT' | 'TEAM_TOURNAMENT' | 'SANDBOX' = 'TOURNAMENT';
   private sandboxA: FighterId = 'water';
   private sandboxB: FighterId = 'blue_fire';
   private stageTheme: StageTheme = 'CLASSIC_WHITE';
@@ -66,6 +77,7 @@ export class AppController {
     this.assets = new AssetService();
     this.sound = new SoundManager();
     this.tournament = new TournamentManager(false);
+    this.teamTournament = new TeamTournamentManager('8_TEAMS', true);
     this.stats = new StatsService();
     this.buildShellLayout();
     this.loadActiveTournamentMatch(false);
@@ -160,6 +172,38 @@ export class AppController {
     this.renderTelemetry(true);
   }
 
+  private loadActiveTeamMatch(autoStart: boolean): void {
+    const match = this.teamTournament.getActiveMatch();
+    if (!match || !match.teamA || !match.teamB) return;
+
+    const banner = this.teamTournament.getMatchBannerTitle(match);
+    const autoSlow = this.world ? this.world.autoSlowMoEnabled : true;
+    this.world = new ArenaWorld(
+      match.teamA.members[0],
+      match.teamB.members[0],
+      banner,
+      this.sound,
+      this.stageTheme,
+      match.teamA,
+      match.teamB
+    );
+    this.world.autoSlowMoEnabled = autoSlow;
+    this.handledWorldResult = false;
+    this.lastLogTopId = -1;
+
+    if (match.status === 'READY') {
+      match.status = 'IN_PROGRESS';
+    }
+    if (autoStart) {
+      this.world.start();
+    }
+
+    this.renderControls();
+    this.renderBracketPanel();
+    this.renderLogs(true);
+    this.renderTelemetry(true);
+  }
+
   private loadSandboxDuel(autoStart = true): void {
     const fA = FIGHTER_MAP[this.sandboxA];
     const fB = FIGHTER_MAP[this.sandboxB];
@@ -223,6 +267,17 @@ export class AppController {
             this.autoAdvanceCountdown = 1.9;
           }
         }
+      } else if (this.mode === 'TEAM_TOURNAMENT') {
+        const active = this.teamTournament.getActiveMatch();
+        if (active && active.status !== 'COMPLETED') {
+          const nextMatch = this.teamTournament.recordMatchWinner(
+            active.id,
+            this.world.result.winnerSlot
+          );
+          if (this.autoAdvanceTournament && nextMatch) {
+            this.autoAdvanceCountdown = 2.2;
+          }
+        }
       }
       this.renderControls();
       this.renderBracketPanel();
@@ -231,13 +286,16 @@ export class AppController {
 
     // Auto-advance tournament timer between matches
     if (
-      this.mode === 'TOURNAMENT' &&
       this.autoAdvanceTournament &&
       this.autoAdvanceCountdown > 0
     ) {
       this.autoAdvanceCountdown -= rawDeltaSec;
-      if (this.autoAdvanceCountdown <= 0 && !this.tournament.state.champion) {
-        this.loadActiveTournamentMatch(true);
+      if (this.autoAdvanceCountdown <= 0) {
+        if (this.mode === 'TOURNAMENT' && !this.tournament.state.champion) {
+          this.loadActiveTournamentMatch(true);
+        } else if (this.mode === 'TEAM_TOURNAMENT' && !this.teamTournament.state.championTeam) {
+          this.loadActiveTeamMatch(true);
+        }
       }
     }
 
@@ -288,7 +346,17 @@ export class AppController {
                   : 'text-slate-400 hover:text-white'
               }"
             >
-              🏆 ${bSize}-Fighter Bracket
+              🏆 Solo (${bSize})
+            </button>
+            <button
+              id="btn-mode-team-tournament"
+              class="px-3 py-1.5 rounded-md text-xs font-bold transition cursor-pointer ${
+                this.mode === 'TEAM_TOURNAMENT'
+                  ? 'bg-indigo-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }"
+            >
+              👥 Tour Teaming (3v3)
             </button>
             <button
               id="btn-mode-sandbox"
@@ -298,7 +366,7 @@ export class AppController {
                   : 'text-slate-400 hover:text-white'
               }"
             >
-              🧪 Sandbox / Custom Duel
+              🧪 Sandbox
             </button>
           </div>
 
@@ -343,8 +411,17 @@ export class AppController {
     this.headerContainerEl.querySelector('#btn-mode-tournament')?.addEventListener('click', () => {
       if (this.mode === 'TOURNAMENT') return;
       this.mode = 'TOURNAMENT';
+      this.autoAdvanceCountdown = 0;
       this.renderHeader();
       this.loadActiveTournamentMatch(false);
+    });
+
+    this.headerContainerEl.querySelector('#btn-mode-team-tournament')?.addEventListener('click', () => {
+      if (this.mode === 'TEAM_TOURNAMENT') return;
+      this.mode = 'TEAM_TOURNAMENT';
+      this.autoAdvanceCountdown = 0;
+      this.renderHeader();
+      this.loadActiveTeamMatch(false);
     });
 
     this.headerContainerEl.querySelector('#btn-mode-sandbox')?.addEventListener('click', () => {
@@ -357,12 +434,21 @@ export class AppController {
 
     this.headerContainerEl.querySelector('#btn-auto-tournament')?.addEventListener('click', () => {
       this.autoAdvanceTournament = !this.autoAdvanceTournament;
-      if (this.autoAdvanceTournament && this.mode === 'TOURNAMENT') {
-        if (this.world.result && !this.tournament.state.champion) {
-          this.loadActiveTournamentMatch(true);
-        } else if (!this.world.isRunning && !this.world.result) {
-          this.world.start();
-          this.renderControls();
+      if (this.autoAdvanceTournament) {
+        if (this.mode === 'TOURNAMENT') {
+          if (this.world.result && !this.tournament.state.champion) {
+            this.loadActiveTournamentMatch(true);
+          } else if (!this.world.isRunning && !this.world.result) {
+            this.world.start();
+            this.renderControls();
+          }
+        } else if (this.mode === 'TEAM_TOURNAMENT') {
+          if (this.world.result && !this.teamTournament.state.championTeam) {
+            this.loadActiveTeamMatch(true);
+          } else if (!this.world.isRunning && !this.world.result) {
+            this.world.start();
+            this.renderControls();
+          }
         }
       }
       this.renderHeader();
@@ -394,6 +480,14 @@ export class AppController {
           : this.world.isRunning
           ? '🔄 Restart Match'
           : '⚔️ Start Match'
+        : this.mode === 'TEAM_TOURNAMENT'
+        ? hasFinished
+          ? this.teamTournament.state.championTeam
+            ? '🏆 New Team Tourney'
+            : '⏭ Load Next 3v3 Match'
+          : this.world.isRunning
+          ? '🔄 Restart 3v3 Match'
+          : '⚔️ Start 3v3 Clash'
         : hasFinished || this.world.isRunning
         ? '⚔️ Fight Again'
         : '⚔️ Start Custom Duel';
@@ -463,6 +557,13 @@ export class AppController {
                     class="px-3.5 py-2 rounded-lg text-xs font-bold bg-rose-950/70 hover:bg-rose-900/80 text-rose-200 border border-rose-800/70 transition cursor-pointer"
                   >
                     🔀 Reset & Shuffle Bracket
+                  </button>`
+                : this.mode === 'TEAM_TOURNAMENT'
+                ? `<button
+                    id="btn-reset-team-bracket"
+                    class="px-3.5 py-2 rounded-lg text-xs font-bold bg-rose-950/70 hover:bg-rose-900/80 text-rose-200 border border-rose-800/70 transition cursor-pointer"
+                  >
+                    🔀 Re-draft Random Teams
                   </button>`
                 : ''
             }
@@ -570,6 +671,62 @@ export class AppController {
               </div>
             </div>
           </div>`
+            : this.mode === 'TEAM_TOURNAMENT' && this.world.teamBattleState
+            ? `
+          <!-- Current 3v3 Team Matchup Strip -->
+          <div class="pt-2 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+            <div class="flex items-center gap-2.5 bg-slate-950/70 rounded-lg p-2.5 border border-slate-800/80">
+              <span class="text-xl shrink-0">${this.world.teamBattleState.teamA.team.badge}</span>
+              <div class="min-w-0 flex-1">
+                <div class="font-bold text-white flex items-center justify-between">
+                  <span style="color:${this.world.teamBattleState.teamA.team.color}">${this.world.teamBattleState.teamA.team.name}</span>
+                  <span class="text-[10px] font-mono text-indigo-400">Fighter ${this.world.teamBattleState.teamA.currentIndex + 1}/3</span>
+                </div>
+                <div class="flex items-center gap-1.5 mt-1 flex-wrap">
+                  ${this.world.teamBattleState.teamA.team.members
+                    .map((id, idx) => {
+                      const isDead = this.world.teamBattleState!.teamA.eliminated[idx];
+                      const isCurrent = idx === this.world.teamBattleState!.teamA.currentIndex;
+                      return `
+                        <div class="flex items-center gap-1 px-1.5 py-0.5 rounded ${
+                          isDead ? 'bg-slate-900/60 opacity-40 line-through' : isCurrent ? 'bg-indigo-950 border border-indigo-500/50' : 'bg-slate-900 border border-slate-800'
+                        }">
+                          <img src="${this.assets.getIconUrl(id)}" class="w-3.5 h-3.5 rounded-full" alt="" />
+                          <span class="text-[10px] font-mono ${isCurrent ? 'text-white font-bold' : 'text-slate-400'}">${FIGHTER_MAP[id].name}</span>
+                        </div>
+                      `;
+                    })
+                    .join('')}
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2.5 bg-slate-950/70 rounded-lg p-2.5 border border-slate-800/80">
+              <span class="text-xl shrink-0">${this.world.teamBattleState.teamB.team.badge}</span>
+              <div class="min-w-0 flex-1">
+                <div class="font-bold text-white flex items-center justify-between">
+                  <span style="color:${this.world.teamBattleState.teamB.team.color}">${this.world.teamBattleState.teamB.team.name}</span>
+                  <span class="text-[10px] font-mono text-indigo-400">Fighter ${this.world.teamBattleState.teamB.currentIndex + 1}/3</span>
+                </div>
+                <div class="flex items-center gap-1.5 mt-1 flex-wrap">
+                  ${this.world.teamBattleState.teamB.team.members
+                    .map((id, idx) => {
+                      const isDead = this.world.teamBattleState!.teamB.eliminated[idx];
+                      const isCurrent = idx === this.world.teamBattleState!.teamB.currentIndex;
+                      return `
+                        <div class="flex items-center gap-1 px-1.5 py-0.5 rounded ${
+                          isDead ? 'bg-slate-900/60 opacity-40 line-through' : isCurrent ? 'bg-indigo-950 border border-indigo-500/50' : 'bg-slate-900 border border-slate-800'
+                        }">
+                          <img src="${this.assets.getIconUrl(id)}" class="w-3.5 h-3.5 rounded-full" alt="" />
+                          <span class="text-[10px] font-mono ${isCurrent ? 'text-white font-bold' : 'text-slate-400'}">${FIGHTER_MAP[id].name}</span>
+                        </div>
+                      `;
+                    })
+                    .join('')}
+                </div>
+              </div>
+            </div>
+          </div>`
             : `
           <!-- Current Matchup Counter Notes Strip -->
           <div class="pt-2 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
@@ -598,10 +755,18 @@ export class AppController {
         if (this.tournament.state.champion) {
           this.tournament.reset(true);
           this.loadActiveTournamentMatch(true);
-        } else if (this.world.result) {
+        } else if (this.world.result || this.world.isRunning) {
           this.loadActiveTournamentMatch(true);
-        } else if (this.world.isRunning) {
-          this.loadActiveTournamentMatch(true);
+        } else {
+          this.world.start();
+          this.renderControls();
+        }
+      } else if (this.mode === 'TEAM_TOURNAMENT') {
+        if (this.teamTournament.state.championTeam) {
+          this.teamTournament.reset(true);
+          this.loadActiveTeamMatch(true);
+        } else if (this.world.result || this.world.isRunning) {
+          this.loadActiveTeamMatch(true);
         } else {
           this.world.start();
           this.renderControls();
@@ -630,6 +795,13 @@ export class AppController {
       this.autoAdvanceCountdown = 0;
       this.tournament.reset(true);
       this.loadActiveTournamentMatch(false);
+    });
+
+    // Bind Reset Team Bracket
+    this.controlsContainerEl.querySelector('#btn-reset-team-bracket')?.addEventListener('click', () => {
+      this.autoAdvanceCountdown = 0;
+      this.teamTournament.reset(true);
+      this.loadActiveTeamMatch(false);
     });
 
     // Bind Speed buttons
@@ -784,6 +956,10 @@ export class AppController {
   }
 
   private renderBracketPanel(): void {
+    if (this.mode === 'TEAM_TOURNAMENT') {
+      this.renderTeamTournamentPanel();
+      return;
+    }
     const bSize = this.tournament.state.bracketSize;
     const totalMatches = this.tournament.state.matches.length;
     const rounds: Array<{ key: RoundStage; title: string; subtitle: string }> = [
@@ -911,6 +1087,288 @@ export class AppController {
         this.loadActiveTournamentMatch(false);
       });
     });
+  }
+
+  private renderTeamTournamentPanel(): void {
+    const format = this.teamTournament.state.format;
+    const totalMatches = this.teamTournament.state.matches.length;
+    const completedCount = this.teamTournament.state.matches.filter((m) => m.status === 'COMPLETED').length;
+    const champ = this.teamTournament.state.championTeam;
+
+    let bodyHtml = '';
+
+    if (format === '3_TEAMS') {
+      // Tri-Tour round-robin
+      const winMap = new Map<string, number>();
+      for (const t of this.teamTournament.state.teams) winMap.set(t.id, 0);
+      for (const m of this.teamTournament.state.matches) {
+        if (m.winnerTeam) winMap.set(m.winnerTeam.id, (winMap.get(m.winnerTeam.id) || 0) + 1);
+      }
+
+      bodyHtml = `
+        <div class="flex flex-col gap-3">
+          <!-- Tri-Tour Standings Table -->
+          <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+            <div class="text-xs font-extrabold uppercase tracking-wider text-indigo-300 mb-2">
+              🏆 Tri-Tour 3-Way Standings
+            </div>
+            <div class="space-y-1.5">
+              ${this.teamTournament.state.teams
+                .map((t) => {
+                  const wins = winMap.get(t.id) || 0;
+                  const isChamp = champ && champ.id === t.id;
+                  return `
+                    <div class="flex items-center justify-between p-2 rounded-lg bg-slate-900 border ${
+                      isChamp ? 'border-amber-400 bg-amber-950/30 ring-1 ring-amber-400' : 'border-slate-800'
+                    }">
+                      <div class="flex items-center gap-2">
+                        <span class="text-base">${t.badge}</span>
+                        <div>
+                          <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                            <span style="color:${t.color}">${t.name}</span>
+                            ${isChamp ? '<span class="text-[10px] text-amber-400 font-extrabold">🏆 CHAMPION</span>' : ''}
+                          </div>
+                          <div class="flex items-center gap-1.5 mt-0.5">
+                            ${t.members
+                              .map(
+                                (id) => `
+                              <div class="flex items-center gap-1">
+                                <img src="${this.assets.getIconUrl(id)}" class="w-3.5 h-3.5 rounded-full ring-1 ring-slate-600" title="${FIGHTER_MAP[id].name}" alt="" />
+                                <span class="text-[10px] text-slate-400 font-mono">${FIGHTER_MAP[id].name}</span>
+                              </div>
+                            `
+                              )
+                              .join('<span class="text-slate-600 text-[9px]">•</span>')}
+                          </div>
+                        </div>
+                      </div>
+                      <div class="text-right">
+                        <div class="text-xs font-mono font-bold text-indigo-300">${wins} WINS</div>
+                        <div class="text-[10px] text-slate-500 font-mono">3v3 Squad</div>
+                      </div>
+                    </div>
+                  `;
+                })
+                .join('')}
+            </div>
+          </div>
+
+          <!-- Triangular Matches List -->
+          <div class="flex flex-col gap-2">
+            <div class="text-xs font-extrabold uppercase tracking-wider text-indigo-300 px-1">
+              Round-Robin Matches
+            </div>
+            <div class="grid grid-cols-1 gap-2">
+              ${this.teamTournament.state.matches.map((m) => this.renderTeamMatchCard(m)).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    } else {
+      // Bracket formats (8_TEAMS or 4_TEAMS)
+      const rounds: Array<{ key: 'QF' | 'SF' | 'FINAL'; title: string; subtitle: string }> = [
+        ...(format === '8_TEAMS' ? [{ key: 'QF' as const, title: 'Quarterfinals', subtitle: '4 Matches (8 Teams)' }] : []),
+        { key: 'SF' as const, title: 'Semifinals', subtitle: '2 Matches' },
+        { key: 'FINAL' as const, title: 'Grand Final', subtitle: 'Team Championship' },
+      ];
+
+      bodyHtml = `
+        <div class="grid grid-cols-1 gap-3 max-h-[520px] overflow-y-auto pr-1">
+          ${rounds
+            .map((r) => {
+              const rMatches = this.teamTournament.state.matches.filter((m) => m.round === r.key);
+              return `
+                <div class="flex flex-col gap-2">
+                  <div class="flex items-center justify-between px-1">
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-indigo-300">${r.title}</span>
+                    <span class="text-[10px] font-mono text-slate-500">${r.subtitle}</span>
+                  </div>
+                  <div class="grid grid-cols-1 gap-2">
+                    ${rMatches.map((m) => this.renderTeamMatchCard(m)).join('')}
+                  </div>
+                </div>
+              `;
+            })
+            .join('')}
+        </div>
+      `;
+    }
+
+    this.bracketContainerEl.innerHTML = `
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800">
+          <div>
+            <h2 class="text-sm font-black uppercase tracking-wide text-white flex items-center gap-2">
+              👥 3v3 Team Tournament
+              <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                Tour Teaming
+              </span>
+            </h2>
+            <p class="text-[11px] text-slate-400">
+              Teams of 3 random fighters • Survivor Relay Elimination • Click any Ready match
+            </p>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <div class="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-[11px] font-bold">
+              <button
+                data-tformat="8_TEAMS"
+                class="btn-tformat px-2 py-1 rounded-md cursor-pointer transition ${
+                  format === '8_TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                }"
+              >8 Teams</button>
+              <button
+                data-tformat="4_TEAMS"
+                class="btn-tformat px-2 py-1 rounded-md cursor-pointer transition ${
+                  format === '4_TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                }"
+              >4 Teams</button>
+              <button
+                data-tformat="3_TEAMS"
+                class="btn-tformat px-2 py-1 rounded-md cursor-pointer transition ${
+                  format === '3_TEAMS' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                }"
+              >3 Teams (Tri-Tour)</button>
+            </div>
+            <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-slate-950 border border-slate-800 text-indigo-300">
+              ${completedCount}/${totalMatches}
+            </span>
+          </div>
+        </div>
+
+        ${
+          champ
+            ? `
+          <div class="rounded-xl p-3 bg-gradient-to-r from-amber-500/20 via-yellow-500/15 to-amber-500/20 border border-amber-400/50 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <span class="text-3xl">${champ.badge}</span>
+              <div>
+                <div class="text-[10px] font-black uppercase tracking-widest text-amber-300">Tournament Champion Team</div>
+                <div class="text-base font-black text-white" style="color:${champ.color}">${champ.name.toUpperCase()}</div>
+                <div class="flex items-center gap-2 mt-1 flex-wrap">
+                  ${champ.members
+                    .map(
+                      (id) => `
+                    <div class="flex items-center gap-1 bg-slate-900/80 px-2 py-0.5 rounded border border-amber-400/30">
+                      <img src="${this.assets.getIconUrl(id)}" class="w-4 h-4 rounded-full" alt="" />
+                      <span class="text-[10px] font-mono text-slate-200">${FIGHTER_MAP[id].name}</span>
+                    </div>`
+                    )
+                    .join('')}
+                </div>
+              </div>
+            </div>
+            <button id="btn-new-team-tourney" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs cursor-pointer">
+              New Tour Teaming
+            </button>
+          </div>`
+            : ''
+        }
+
+        ${bodyHtml}
+      </div>
+    `;
+
+    // Bind Format switchers
+    this.bracketContainerEl.querySelectorAll('.btn-tformat').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const nextFormat = (btn as HTMLElement).dataset.tformat as TeamTournamentFormat;
+        if (nextFormat === this.teamTournament.state.format) return;
+        this.autoAdvanceCountdown = 0;
+        this.teamTournament.setFormat(nextFormat, true);
+        this.renderHeader();
+        this.loadActiveTeamMatch(false);
+      });
+    });
+
+    this.bracketContainerEl.querySelector('#btn-new-team-tourney')?.addEventListener('click', () => {
+      this.teamTournament.reset(true);
+      this.renderHeader();
+      this.loadActiveTeamMatch(true);
+    });
+
+    // Bind match selection clicks
+    this.bracketContainerEl.querySelectorAll('.team-match-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        const matchId = (card as HTMLElement).dataset.matchId;
+        if (!matchId) return;
+        const m = this.teamTournament.getMatch(matchId);
+        if (!m || !m.teamA || !m.teamB || m.status === 'COMPLETED') return;
+        this.teamTournament.selectMatch(matchId);
+        this.renderHeader();
+        this.loadActiveTeamMatch(false);
+      });
+    });
+  }
+
+  private renderTeamMatchCard(m: TeamBracketMatch): string {
+    const isActive = this.mode === 'TEAM_TOURNAMENT' && this.teamTournament.state.activeMatchId === m.id;
+    const canSelect = Boolean(m.teamA && m.teamB && m.status !== 'COMPLETED');
+
+    const borderClass = isActive
+      ? 'border-indigo-500 bg-indigo-950/30 ring-1 ring-indigo-500'
+      : m.status === 'COMPLETED'
+      ? 'border-slate-800 bg-slate-950/60'
+      : canSelect
+      ? 'border-slate-700 bg-slate-950 hover:border-indigo-400/70 cursor-pointer'
+      : 'border-slate-800/60 bg-slate-950/30 opacity-65';
+
+    const renderTeamRow = (team: FighterTeam | null, isWinner: boolean, isLoser: boolean) => {
+      if (!team) {
+        return `
+          <div class="flex items-center gap-2 p-1.5 rounded bg-slate-900/40 border border-slate-800/40 text-xs italic text-slate-500">
+            Awaiting Advancing Team...
+          </div>
+        `;
+      }
+      return `
+        <div class="flex items-center justify-between p-1.5 rounded bg-slate-900/80 border ${
+          isWinner ? 'border-emerald-500/60 bg-emerald-950/20' : isLoser ? 'border-slate-800 opacity-50' : 'border-slate-800'
+        }">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-sm shrink-0">${team.badge}</span>
+            <div class="min-w-0">
+              <div class="text-xs font-bold truncate flex items-center gap-1.5">
+                <span style="color:${team.color}">${team.name}</span>
+                ${isWinner ? '<span class="text-[10px] text-emerald-400 font-extrabold">🏆 WON</span>' : ''}
+              </div>
+              <div class="flex items-center gap-1 mt-0.5 flex-wrap">
+                ${team.members
+                  .map(
+                    (id) => `
+                  <img src="${this.assets.getIconUrl(id)}" class="w-4 h-4 rounded-full ring-1 ring-slate-700" title="${FIGHTER_MAP[id].name} (${FIGHTER_MAP[id].weaponType})" alt="" />
+                `
+                  )
+                  .join('')}
+                <span class="text-[10px] text-slate-400 font-mono ml-1 truncate">
+                  ${team.members.map((id) => FIGHTER_MAP[id].name).join(', ')}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
+    return `
+      <div data-match-id="${m.id}" class="team-match-card rounded-lg border p-2.5 transition ${borderClass}">
+        <div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1.5">
+          <span class="font-bold text-slate-300">${m.label}</span>
+          ${
+            isActive && m.status !== 'COMPLETED'
+              ? '<span class="text-indigo-400 font-bold animate-pulse">● LIVE ARENA</span>'
+              : m.status === 'COMPLETED'
+              ? '<span class="text-emerald-400 font-bold">✓ COMPLETED</span>'
+              : canSelect
+              ? '<span class="text-slate-400">READY TO FIGHT</span>'
+              : '<span class="text-slate-600">LOCKED</span>'
+          }
+        </div>
+        <div class="space-y-1.5">
+          ${renderTeamRow(m.teamA, m.winnerTeam?.id === m.teamA?.id, m.loserTeam?.id === m.teamA?.id)}
+          ${renderTeamRow(m.teamB, m.winnerTeam?.id === m.teamB?.id, m.loserTeam?.id === m.teamB?.id)}
+        </div>
+      </div>
+    `;
   }
 
   /**
