@@ -114,6 +114,8 @@ export interface FighterDefinition {
   idealRangeMax: number;
   attackCooldown: number;
   specialCooldown: number;
+  ultimateName: string;
+  ultimateDesc: string;
   bodyModel: FighterBodyModel;
   aiBehaviorSummary: string;
   counterNotes: string;
@@ -223,6 +225,10 @@ export interface FighterRuntime {
   stateTimer: number;
   attackCooldown: number;
   specialCooldown: number;
+  ultimateMeter: number; // 0 to 100%
+  ultimateCooldown: number;
+  ultimateActiveTimer: number;
+  ultimateKind?: string;
   evadeCooldown: number;
   windupTimer: number;
   windupMax: number;
@@ -490,6 +496,14 @@ export interface CombatLogEntry {
 }
 
 export type WinReason = 'KO' | 'SURRENDER' | 'TIMEOUT_DECISION';
+
+export interface UltimateBanner {
+  title: string;
+  subText: string;
+  color: string;
+  timer: number;
+  maxTimer: number;
+}
 
 export interface MatchResult {
   winnerSlot: 0 | 1;

@@ -24,9 +24,10 @@ import {
   StagePlatform,
   StageTheme,
   StuckProjectile,
+  UltimateBanner,
   Vec2,
 } from '../types/game';
-import { clamp, normalize, pointToSegmentDist, segmentIntersectsAABB, solveTwoBoneIK } from './math';
+import { clamp, lerp, normalize, pointToSegmentDist, segmentIntersectsAABB, solveTwoBoneIK } from './math';
 import {
   LOWER_ARM,
   SHIN_LEN,
@@ -83,11 +84,16 @@ export class ArenaWorld {
   public result: MatchResult | null = null;
   public sound: SoundManager | null = null;
 
-  // Cinematic FX state (smoothly interpolated time-scale — zero frame hitching!)
+  // Cinematic FX & Ultimate states
   public screenShake = 0;
   public slowMoTimer = 0;
   public currentTimeScale = 1;
   public autoSlowMoEnabled = true;
+  public activeUltimateBanner: UltimateBanner | null = null;
+  public arenaIceTimer = 0;
+  public arenaDarknessTimer = 0;
+  public timeFreezeTimer = 0;
+  public timeFreezeOwnerSlot: 0 | 1 = 0;
 
   private nextEntityId = 1;
   private refereeCountdown = 0;
@@ -202,6 +208,9 @@ export class ArenaWorld {
       stateTimer: slot * 1.3,
       attackCooldown: 0.45,
       specialCooldown: 1.1,
+      ultimateMeter: 25,
+      ultimateCooldown: 0,
+      ultimateActiveTimer: 0,
       evadeCooldown: 0,
       windupTimer: 0,
       windupMax: 0,
@@ -432,6 +441,31 @@ export class ArenaWorld {
       return;
     }
 
+    // Step Ultimate Timers, Arena Global Effects & Passive Charge
+    if (this.activeUltimateBanner) {
+      this.activeUltimateBanner.timer -= dt;
+      if (this.activeUltimateBanner.timer <= 0) {
+        this.activeUltimateBanner = null;
+      }
+    }
+    if (this.arenaIceTimer > 0) this.arenaIceTimer = Math.max(0, this.arenaIceTimer - dt);
+    if (this.arenaDarknessTimer > 0) this.arenaDarknessTimer = Math.max(0, this.arenaDarknessTimer - dt);
+    if (this.timeFreezeTimer > 0) {
+      this.timeFreezeTimer = Math.max(0, this.timeFreezeTimer - dt);
+      const frozenSlot = this.timeFreezeOwnerSlot === 0 ? 1 : 0;
+      this.fighters[frozenSlot].vx = 0;
+      this.fighters[frozenSlot].vy = 0;
+      this.fighters[frozenSlot].hitstunTimer = 0.2;
+    }
+
+    for (const f of this.fighters) {
+      if (f.hp > 0 && !f.surrendered && f.aiState !== 'DEFEATED') {
+        f.ultimateMeter = Math.min(100, f.ultimateMeter + dt * 4.0);
+        if (f.ultimateCooldown > 0) f.ultimateCooldown = Math.max(0, f.ultimateCooldown - dt);
+        if (f.ultimateActiveTimer > 0) f.ultimateActiveTimer = Math.max(0, f.ultimateActiveTimer - dt);
+      }
+    }
+
     // 1. AI Perception & Decisions for both fighters
     const ctx = {
       arenaLeft: ARENA_PADDING_X,
@@ -658,8 +692,10 @@ export class ArenaWorld {
       return;
     }
 
-    // Special Ability vs Primary Attack
-    if (cmd.specialAbility && f.specialCooldown <= 0 && f.hasWeapon) {
+    // Ultimate Ability vs Special Ability vs Primary Attack
+    if (cmd.ultimate && f.ultimateMeter >= 100 && f.ultimateCooldown <= 0 && f.hasWeapon) {
+      this.executeUltimate(f, targetPos);
+    } else if (cmd.specialAbility && f.specialCooldown <= 0 && f.hasWeapon) {
       this.executeSpecialAbility(f, targetPos);
     } else if (cmd.primaryAttack && f.attackCooldown <= 0) {
       if (f.hasWeapon) {
@@ -2545,6 +2581,955 @@ export class ArenaWorld {
     }
   }
 
+  private spawnPillarObstacle(
+    ownerSlot: 0 | 1,
+    x: number,
+    width: number,
+    height: number,
+    kind: 'STONE_PILLAR' | 'GLASS_PILLAR',
+    hp = 140,
+    life = 9
+  ): void {
+    const px = clamp(x, ARENA_PADDING_X + 24, ARENA_WIDTH - ARENA_PADDING_X - width - 24);
+    this.obstacles.push({
+      id: this.nextEntityId++,
+      ownerSlot,
+      kind,
+      x: px,
+      y: ARENA_FLOOR_Y,
+      targetY: ARENA_FLOOR_Y - height,
+      riseProgress: 0,
+      width,
+      height,
+      hp,
+      maxHp: hp,
+      life,
+      cracks: [],
+    });
+  }
+
+  private executeUltimate(f: FighterRuntime, targetPos: Vec2): void {
+    if (f.ultimateMeter < 100 || f.ultimateCooldown > 0) return;
+    f.ultimateMeter = 0;
+    f.ultimateCooldown = 15.0;
+    f.ultimateActiveTimer = 1.6;
+    const enemy = this.fighters[f.slot === 0 ? 1 : 0];
+
+    // Cinematic Ultimate Activation Banner & Slow-Mo Impact
+    this.activeUltimateBanner = {
+      title: f.def.ultimateName.toUpperCase(),
+      subText: f.def.ultimateDesc,
+      color: f.def.color,
+      timer: 2.2,
+      maxTimer: 2.2,
+    };
+    this.slowMoTimer = Math.max(this.slowMoTimer, 0.45);
+    this.screenShake = Math.max(this.screenShake, 14);
+    this.addLog(`⚡ ULTIMATE: ${f.def.name} unleashed [${f.def.ultimateName}]!`, f.def.color, true);
+
+    const id = f.def.id;
+    switch (id) {
+      case 'long_sword': {
+        // Omnislash: Thousand Blades - supersonic 4-hit iaido teleport slash barrage!
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        this.sound?.playWeaponClash();
+        const startX = f.x;
+        const targetX = enemy.x + f.facing * 85;
+        for (let i = 0; i < 4; i++) {
+          const px = lerp(startX, targetX, (i + 1) / 4);
+          this.slashTrails.push({
+            points: [
+              { x: f.x - 40, y: enemy.y - 40 + i * 16 },
+              { x: enemy.x, y: enemy.y - 20 },
+              { x: px + 40, y: enemy.y + 10 - i * 12 },
+            ],
+            color: '#facc15',
+            width: 4.5,
+            alpha: 1.0,
+          });
+        }
+        f.x = clamp(targetX, ARENA_PADDING_X + 40, ARENA_WIDTH - ARENA_PADDING_X - 40);
+        f.facing = f.x < enemy.x ? 1 : -1;
+        this.damageFighter(enemy, f.slot, 32, f.facing * 340, -160, 'SLASH', f.x, f.blueFireCoated);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#facc15', 24, 280, 'spark');
+        break;
+      }
+
+      case 'sniper': {
+        // Orbital Railgun Cannon - satellite targeted kinetic death-beam from ceiling to floor!
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.4;
+        f.activeAttackTimer = 0.4;
+        this.sound?.playSniperShot();
+        this.sound?.playExplosion();
+        const beamX = enemy.x;
+        this.laserTracers.push({
+          x1: beamX,
+          y1: ARENA_TOP,
+          x2: beamX,
+          y2: ARENA_FLOOR_Y,
+          color: '#eab308',
+          width: 38,
+          alpha: 1.0,
+        });
+        this.hitObstaclesInReach(beamX, ARENA_FLOOR_Y - 80, 75, 120);
+        this.hitClonesInReach(f.slot, beamX, ARENA_FLOOR_Y - 80, 90);
+        this.spawnBurstParticles(beamX, ARENA_FLOOR_Y - 10, '#facc15', 30, 360, 'spark');
+        this.screenShake = 22;
+        if (Math.abs(enemy.x - beamX) < 65) {
+          this.damageFighter(enemy, f.slot, 38, f.facing * 440, -220, 'EXPLOSION', beamX, f.blueFireCoated);
+        }
+        break;
+      }
+
+      case 'glass': {
+        // Prismatic Mirror Cathedral - traps enemy between 2 glass monoliths and fires 12 daggers!
+        f.attackStyle = 'RAISE_SUMMON';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playGlassRise();
+        this.sound?.playGlassShatter();
+        this.spawnPillarObstacle(f.slot, enemy.x - 75, 34, 180, 'GLASS_PILLAR', 150, 8);
+        this.spawnPillarObstacle(f.slot, enemy.x + 45, 34, 180, 'GLASS_PILLAR', 150, 8);
+        const daggerCount = 12;
+        for (let i = 0; i < daggerCount; i++) {
+          const angle = (i / daggerCount) * Math.PI * 2;
+          const spawnX = enemy.x + Math.cos(angle) * 140;
+          const spawnY = enemy.y - 28 + Math.sin(angle) * 110;
+          const toEnemy = normalize(enemy.x - spawnX, enemy.y - 28 - spawnY);
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'GLASS_DAGGER',
+            x: spawnX,
+            y: spawnY,
+            vx: toEnemy.x * 620,
+            vy: toEnemy.y * 620,
+            radius: 5,
+            damage: 6,
+            knockback: 110,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 1.5,
+            color: '#38bdf8',
+            piercing: true,
+          });
+        }
+        break;
+      }
+
+      case 'plier': {
+        // Hydraulic Titan Guillotine - giant snap launch, jump overhead, and crushing pile-driver!
+        f.attackStyle = 'CHOMP';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        this.sound?.playSnap();
+        this.sound?.playHammerSlam();
+        f.vx = f.facing * 450;
+        f.vy = -520;
+        f.grounded = false;
+        enemy.vx = f.facing * 380;
+        enemy.vy = -480;
+        enemy.grounded = false;
+        enemy.stunTimer = 0.9;
+        this.screenShake = 18;
+        this.damageFighter(enemy, f.slot, 34, f.facing * 320, -380, 'BLUNT', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 20, '#f97316', 22, 280, 'spark');
+        break;
+      }
+
+      case 'blue_fire': {
+        // Inferno Calamity - ocean of royal blue fire across 100% of the arena floor + 3 firestorms!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        f.blueFireCoated = true;
+        this.sound?.playFlameRoar();
+        this.screenShake = 16;
+        for (let i = this.floorZones.length - 1; i >= 0; i--) {
+          if (this.floorZones[i].kind === 'BLUE_FIRE' || this.floorZones[i].kind === 'ICE_SHEET') {
+            this.floorZones.splice(i, 1);
+          }
+        }
+        this.floorZones.push({
+          id: this.nextEntityId++,
+          ownerSlot: f.slot,
+          kind: 'BLUE_FIRE',
+          x: ARENA_PADDING_X,
+          width: ARENA_WIDTH - ARENA_PADDING_X * 2,
+          life: 6.5,
+          maxLife: 6.5,
+        });
+        for (let i = -1; i <= 1; i++) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'BLUE_FIREBALL',
+            x: f.x + f.facing * 28,
+            y: f.y - 26,
+            vx: f.facing * 520,
+            vy: i * 160,
+            radius: 12,
+            damage: 16,
+            knockback: 220,
+            isMetallic: false,
+            blueFireCoated: true,
+            gravity: 120,
+            life: 2.5,
+            color: '#38bdf8',
+          });
+        }
+        this.damageFighter(enemy, f.slot, 20, f.facing * 260, -140, 'FIRE', f.x, true);
+        break;
+      }
+
+      case 'magnet': {
+        // Magnetic Polarity Implosion - disarms opponent, pulls inward, and crushes with metallic shrapnel!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playElectroZap();
+        this.sound?.playWeaponClash();
+        if (enemy.hasWeapon && !enemy.weaponBroken) {
+          this.dropFighterWeapon(enemy, -enemy.facing * 160, -280, false);
+        }
+        enemy.vx = (f.x - enemy.x) * 2.8;
+        enemy.vy = -180;
+        enemy.stunTimer = 0.75;
+        const boltCount = 8;
+        for (let i = 0; i < boltCount; i++) {
+          const ang = (i / boltCount) * Math.PI * 2;
+          const bx = enemy.x + Math.cos(ang) * 160;
+          const by = enemy.y - 26 + Math.sin(ang) * 130;
+          const dir = normalize(enemy.x - bx, enemy.y - 26 - by);
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'MAGNET_BOLT',
+            x: bx,
+            y: by,
+            vx: dir.x * 640,
+            vy: dir.y * 640,
+            radius: 8,
+            damage: 5,
+            knockback: 140,
+            isMetallic: true,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 1.2,
+            color: '#ef4444',
+            piercing: true,
+          });
+        }
+        this.screenShake = 15;
+        break;
+      }
+
+      case 'portal': {
+        // Event Horizon Warp Rush - dual portals swallow opponent, eject from ceiling, dropkick down!
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playPortalWarp();
+        this.sound?.playSlash();
+        this.portals = [{
+          ownerSlot: f.slot,
+          orange: { x: enemy.x, y: ARENA_FLOOR_Y - 14, normalX: 0, normalY: -1, angle: -Math.PI * 0.5, color: '#f97316' },
+          blue: { x: enemy.x, y: ARENA_TOP + 30, normalX: 0, normalY: 1, angle: Math.PI * 0.5, color: '#0ea5e9' },
+          life: 4.5,
+        }];
+        enemy.x = clamp(enemy.x, ARENA_PADDING_X + 60, ARENA_WIDTH - ARENA_PADDING_X - 60);
+        enemy.y = ARENA_TOP + 55;
+        enemy.vy = 680;
+        enemy.grounded = false;
+        f.x = enemy.x - f.facing * 20;
+        f.y = ARENA_TOP + 35;
+        f.vy = 750;
+        this.damageFighter(enemy, f.slot, 30, f.facing * 260, 480, 'SLASH', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y, '#f97316', 22, 280, 'ring');
+        break;
+      }
+
+      case 'rubber': {
+        // Super-Bounce Pinball Gatling - high-speed invincible pinball bouncing across walls & floor!
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.6;
+        f.activeAttackTimer = 0.6;
+        f.invulnTimer = 1.4;
+        this.sound?.playBoing();
+        f.stretchScaleX = 1.5;
+        f.stretchScaleY = 0.6;
+        f.vx = f.facing * 820;
+        f.vy = -640;
+        f.grounded = false;
+        this.screenShake = 16;
+        this.damageFighter(enemy, f.slot, 32, f.facing * 420, -320, 'BLUNT', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 20, '#ec4899', 24, 300, 'ring');
+        break;
+      }
+
+      case 'gravity': {
+        // 15G Gravitational Cataclysm - inverts gravity to ceiling slam, then crushes with 15G floor impact!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playHammerSlam();
+        enemy.gravityScale = -5;
+        enemy.gravityTimer = 0.4;
+        enemy.vy = -750;
+        enemy.grounded = false;
+        this.screenShake = 18;
+        this.floorZones.push({
+          id: this.nextEntityId++,
+          ownerSlot: f.slot,
+          kind: 'GRAVITY_CRUSH',
+          x: clamp(enemy.x - 120, ARENA_PADDING_X, ARENA_WIDTH - ARENA_PADDING_X - 240),
+          width: 240,
+          life: 4.0,
+          maxLife: 4.0,
+        });
+        this.damageFighter(enemy, f.slot, 34, 0, 520, 'HAMMER_SEISMIC', f.x);
+        this.spawnBurstParticles(enemy.x, ARENA_FLOOR_Y - 10, '#8b5cf6', 26, 320, 'ring');
+        break;
+      }
+
+      case 'bulwark': {
+        // Fortress Aegis Bulldozer - restores shield 100%, 2.5s invulnerability, bulldozes enemy into wall!
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.65;
+        f.activeAttackTimer = 0.65;
+        f.shieldIntegrity = 100;
+        f.shieldBlocking = true;
+        f.invulnTimer = 2.5;
+        this.sound?.playShieldBlock();
+        this.sound?.playHammerSlam();
+        f.vx = f.facing * 720;
+        this.damageFighter(enemy, f.slot, 32, f.facing * 640, -180, 'BLUNT', f.x);
+        enemy.stunTimer = 1.0;
+        this.screenShake = 18;
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#94a3b8', 24, 280, 'spark');
+        break;
+      }
+
+      case 'clone': {
+        // Shadow Illusion Pentagram - summons 3 clones surrounding enemy, striking all at once!
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playSlash();
+        const clonePositions = [
+          { x: enemy.x - 65, facing: 1 as const },
+          { x: enemy.x + 65, facing: -1 as const },
+          { x: enemy.x - 20, facing: f.facing },
+        ];
+        for (let i = 0; i < clonePositions.length; i++) {
+          const cp = clonePositions[i];
+          const sk = createInitialSkeleton(cp.x, ARENA_FLOOR_Y, f.def.bodyModel);
+          this.clones.push({
+            id: this.nextEntityId++,
+            ownerSlot: f.slot,
+            x: cp.x,
+            y: ARENA_FLOOR_Y - (f.def.bodyModel?.pelvisHeight ?? STAND_PELVIS_HEIGHT),
+            vx: cp.facing * 140,
+            vy: 0,
+            facing: cp.facing,
+            walkPhase: 0,
+            attackAnim: 0.35,
+            life: 3.5,
+            skeleton: sk,
+          });
+        }
+        this.damageFighter(enemy, f.slot, 30, f.facing * 300, -180, 'SLASH', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#64748b', 28, 260, 'smoke');
+        break;
+      }
+
+      case 'thunder': {
+        // Giga-Volt Heaven Strike - 100,000V vertical thunderbolt, stunning enemy and electrocuting floor!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playElectroZap();
+        this.screenShake = 20;
+        const lx = enemy.x;
+        this.laserTracers.push({
+          x1: lx,
+          y1: ARENA_TOP,
+          x2: lx,
+          y2: ARENA_FLOOR_Y,
+          color: '#38bdf8',
+          width: 30,
+          alpha: 1.0,
+        });
+        enemy.stunTimer = 1.25;
+        enemy.electroFlash = true;
+        this.damageFighter(enemy, f.slot, 34, f.facing * 280, -220, 'ELECTRIC', lx);
+        this.spawnBurstParticles(lx, enemy.y - 24, '#38bdf8', 32, 340, 'spark');
+        for (const dir of [-1, 1]) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'THUNDER_ARC',
+            x: lx,
+            y: ARENA_FLOOR_Y - 16,
+            vx: dir * 480,
+            vy: -120,
+            radius: 8,
+            damage: 10,
+            knockback: 180,
+            isMetallic: false,
+            blueFireCoated: false,
+            gravity: 420,
+            life: 1.5,
+            color: '#38bdf8',
+            bouncesLeft: 2,
+          });
+        }
+        break;
+      }
+
+      case 'ice': {
+        // Absolute Zero - freezes entire arena floor, flash-freezes enemy in solid ice block, rains stalactites!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playGlassRise();
+        this.sound?.playGlassShatter();
+        this.arenaIceTimer = 6.0;
+        this.screenShake = 16;
+        for (let i = this.floorZones.length - 1; i >= 0; i--) {
+          if (this.floorZones[i].kind === 'BLUE_FIRE') {
+            this.floorZones.splice(i, 1);
+          }
+        }
+        this.floorZones.push({
+          id: this.nextEntityId++,
+          ownerSlot: f.slot,
+          kind: 'ICE_SHEET',
+          x: ARENA_PADDING_X,
+          width: ARENA_WIDTH - ARENA_PADDING_X * 2,
+          life: 6.0,
+          maxLife: 6.0,
+        });
+        enemy.freezeTimer = 1.4;
+        enemy.frostBuildup = 100;
+        enemy.vx = 0;
+        enemy.vy = 0;
+        for (let i = -1.5; i <= 1.5; i += 1.0) {
+          const spikeX = clamp(enemy.x + i * 45, ARENA_PADDING_X + 30, ARENA_WIDTH - ARENA_PADDING_X - 30);
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'ICE_SHARD',
+            x: spikeX,
+            y: ARENA_TOP + 10,
+            vx: 0,
+            vy: 680,
+            radius: 10,
+            damage: 8,
+            knockback: 180,
+            isMetallic: false,
+            blueFireCoated: false,
+            gravity: 980,
+            life: 1.5,
+            color: '#7dd3fc',
+            piercing: true,
+          });
+        }
+        this.damageFighter(enemy, f.slot, 20, 0, 0, 'BLUNT', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#38bdf8', 30, 260, 'shard');
+        break;
+      }
+
+      case 'black_hole': {
+        // Supermassive Singularity Apex - massive gravitational vortex in center, supernova explosion!
+        f.attackStyle = 'RAISE_SUMMON';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playExplosion();
+        this.singularities.push({
+          id: this.nextEntityId++,
+          ownerSlot: f.slot,
+          x: ARENA_WIDTH * 0.5,
+          y: ARENA_FLOOR_Y - 140,
+          vx: 0,
+          vy: 0,
+          radius: 38,
+          pullRadius: 320,
+          life: 3.2,
+          maxLife: 3.2,
+        });
+        enemy.vx = (ARENA_WIDTH * 0.5 - enemy.x) * 3.2;
+        enemy.vy = -340;
+        this.damageFighter(enemy, f.slot, 32, f.facing * 340, -240, 'EXPLOSION', ARENA_WIDTH * 0.5);
+        this.spawnBurstParticles(ARENA_WIDTH * 0.5, ARENA_FLOOR_Y - 140, '#a855f7', 35, 360, 'ring');
+        this.screenShake = 22;
+        break;
+      }
+
+      case 'rocket': {
+        // Tactical Carpet Bombing - 5 rockets cascade across arena in sequential artillery barrage!
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playSniperShot();
+        const spreads = [-120, -60, 0, 60, 120];
+        for (const sp of spreads) {
+          const rx = clamp(enemy.x + sp, ARENA_PADDING_X + 40, ARENA_WIDTH - ARENA_PADDING_X - 40);
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'ROCKET',
+            x: f.x + f.facing * 30,
+            y: f.y - 28,
+            vx: (rx - f.x) * 1.5,
+            vy: -550,
+            radius: 8,
+            damage: 9,
+            knockback: 220,
+            isMetallic: true,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 680,
+            life: 2.2,
+            color: '#ef4444',
+          });
+        }
+        break;
+      }
+
+      case 'hammer': {
+        // Seismic Continent Splitter - colossal 2-hand slam splitting the floor into seismic shockwaves!
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.6;
+        f.activeAttackTimer = 0.6;
+        f.vx = f.facing * 220;
+        f.vy = -380;
+        f.grounded = false;
+        this.sound?.playHammerSlam();
+        this.screenShake = 24;
+        this.shockwaves.push({
+          ownerSlot: f.slot,
+          x: f.x + f.facing * 50,
+          y: ARENA_FLOOR_Y,
+          radius: 10,
+          maxRadius: 360,
+          speed: 720,
+          color: '#fbbf24',
+          groundOnly: true,
+          hitSlots: new Set<number>([f.slot]),
+        });
+        this.hitObstaclesInReach(f.x + f.facing * 60, ARENA_FLOOR_Y - 50, 160, 100);
+        this.damageFighter(enemy, f.slot, 36, f.facing * 440, -420, 'HAMMER_SEISMIC', f.x);
+        this.spawnBurstParticles(f.x + f.facing * 50, ARENA_FLOOR_Y - 8, '#d97706', 30, 340, 'spark');
+        break;
+      }
+
+      case 'scythe': {
+        // Grim Reaper Soul Harvest - massive 360 arc vacuum blade slicing enemy and siphoning +22 HP!
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playSlash();
+        this.slashTrails.push({
+          points: [
+            { x: f.x - f.facing * 90, y: f.y - 75 },
+            { x: f.x + f.facing * 140, y: f.y - 30 },
+            { x: f.x - f.facing * 60, y: f.y + 25 },
+          ],
+          color: '#a855f7',
+          width: 6.0,
+          alpha: 1.0,
+        });
+        f.hp = Math.min(f.maxHp, f.hp + 22);
+        this.damageFighter(enemy, f.slot, 32, f.facing * 340, -180, 'SLASH', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#a855f7', 26, 280, 'spark');
+        break;
+      }
+
+      case 'boomerang': {
+        // Dual Cyclone Razor Storm - 2 oversized razor boomerangs looping in high-speed figure-8s!
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.4;
+        f.activeAttackTimer = 0.4;
+        this.sound?.playWeaponClash();
+        for (const dir of [-1, 1]) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'BOOMERANG',
+            x: f.x + f.facing * 30,
+            y: f.y - 24,
+            vx: f.facing * 580,
+            vy: dir * 220,
+            radius: 12,
+            damage: 16,
+            knockback: 180,
+            isMetallic: true,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 2.8,
+            color: '#10b981',
+            returning: true,
+            piercing: true,
+          });
+        }
+        break;
+      }
+
+      case 'chainsaw': {
+        // Apocalyptic Overdrive Carnage - 12,000 RPM invulnerable charging shredder tearing through obstacles!
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.65;
+        f.activeAttackTimer = 0.65;
+        f.invulnTimer = 1.4;
+        this.sound?.playSlash();
+        f.vx = f.facing * 740;
+        this.hitObstaclesInReach(f.x + f.facing * 60, f.y - 24, 120, 150);
+        this.damageFighter(enemy, f.slot, 34, f.facing * 480, -220, 'SLASH', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#ef4444', 32, 340, 'spark');
+        this.screenShake = 20;
+        break;
+      }
+
+      case 'sonic': {
+        // Hyper-Frequency Disruptor - 180dB 360-degree sonic ring shatters all glass and stuns enemy!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.4;
+        f.activeAttackTimer = 0.4;
+        this.sound?.playExplosion();
+        this.shockwaves.push({
+          ownerSlot: f.slot,
+          x: f.x,
+          y: f.y - 24,
+          radius: 15,
+          maxRadius: 380,
+          speed: 820,
+          color: '#06b6d4',
+          groundOnly: false,
+          hitSlots: new Set<number>([f.slot]),
+        });
+        for (const o of this.obstacles) {
+          if (o.kind === 'GLASS_WALL' || o.kind === 'GLASS_PILLAR') {
+            o.hp = 0;
+          }
+        }
+        enemy.stunTimer = 1.0;
+        this.damageFighter(enemy, f.slot, 30, f.facing * 380, -240, 'BLUNT', f.x);
+        this.spawnBurstParticles(f.x, f.y - 24, '#06b6d4', 30, 360, 'ring');
+        this.screenShake = 18;
+        break;
+      }
+
+      case 'venom': {
+        // Toxic Deluge Corrosion - floods arena floor with corrosive acid pool and drenches enemy in lethal poison!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playFlameRoar();
+        this.floorZones.push({
+          id: this.nextEntityId++,
+          ownerSlot: f.slot,
+          kind: 'ACID_POOL',
+          x: clamp(enemy.x - 140, ARENA_PADDING_X, ARENA_WIDTH - ARENA_PADDING_X - 280),
+          width: 280,
+          life: 6.0,
+          maxLife: 6.0,
+        });
+        enemy.poisonTimer = 6.5;
+        for (let i = -1; i <= 1; i++) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'VENOM_GLOB',
+            x: f.x + f.facing * 28,
+            y: f.y - 24,
+            vx: f.facing * 440 + i * 90,
+            vy: -260,
+            radius: 10,
+            damage: 10,
+            knockback: 160,
+            isMetallic: false,
+            blueFireCoated: false,
+            gravity: 520,
+            life: 2.2,
+            color: '#84cc16',
+          });
+        }
+        this.damageFighter(enemy, f.slot, 18, f.facing * 220, -140, 'BLUNT', f.x);
+        break;
+      }
+
+      case 'wind': {
+        // Tempest Apex Cyclone - towering twister catches enemy, lifts them helpless, and cuts with wind blades!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playFlameRoar();
+        this.floorZones.push({
+          id: this.nextEntityId++,
+          ownerSlot: f.slot,
+          kind: 'TORNADO',
+          x: f.x + f.facing * 40,
+          width: 200,
+          vx: f.facing * 160,
+          life: 5.5,
+          maxLife: 5.5,
+        });
+        for (let i = 0; i < 3; i++) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'WIND_BLADE',
+            x: f.x + f.facing * 30,
+            y: f.y - 40 + i * 20,
+            vx: f.facing * 640,
+            vy: (i - 1) * 80,
+            radius: 8,
+            damage: 8,
+            knockback: 200,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 1.5,
+            color: '#a7f3d0',
+            piercing: true,
+          });
+        }
+        this.damageFighter(enemy, f.slot, 20, f.facing * 320, -380, 'SLASH', f.x);
+        break;
+      }
+
+      case 'spear': {
+        // Divine Celestial Dragoon Dive - leaps offscreen, dives diagonally at hypersonic speed creating a ground crater!
+        f.attackStyle = 'SPEAR_PLUNGE';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        f.invulnTimer = 0.7;
+        this.sound?.playSlash();
+        this.sound?.playHammerSlam();
+        f.x = enemy.x - f.facing * 40;
+        f.y = ARENA_FLOOR_Y - 40;
+        f.vx = f.facing * 240;
+        f.vy = 0;
+        this.laserTracers.push({
+          x1: f.x - f.facing * 180,
+          y1: ARENA_TOP,
+          x2: f.x,
+          y2: ARENA_FLOOR_Y - 20,
+          color: '#f87171',
+          width: 6.0,
+          alpha: 1.0,
+        });
+        this.screenShake = 22;
+        this.damageFighter(enemy, f.slot, 36, f.facing * 440, -320, 'PIERCE', f.x);
+        this.spawnBurstParticles(enemy.x, ARENA_FLOOR_Y - 12, '#f87171', 28, 320, 'spark');
+        break;
+      }
+
+      case 'whip': {
+        // Whiplash Chain Encirclement - binds opponent, slams into ceiling, slams into floor, and disarms them!
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playSnap();
+        this.sound?.playHammerSlam();
+        if (enemy.hasWeapon && !enemy.weaponBroken) {
+          this.dropFighterWeapon(enemy, -enemy.facing * 180, -260, false);
+        }
+        enemy.vx = 0;
+        enemy.vy = -550;
+        enemy.stunTimer = 0.85;
+        this.damageFighter(enemy, f.slot, 30, f.facing * 280, 420, 'BLUNT', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#e2e8f0', 24, 280, 'spark');
+        break;
+      }
+
+      case 'laser': {
+        // Solar Prism Obliteration Beam - full-screen 40px photon cannon disintegrating obstacles and blasting enemy!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playSniperShot();
+        const beamY = f.y - 28;
+        this.laserTracers.push({
+          x1: f.facing === 1 ? f.x : ARENA_PADDING_X,
+          y1: beamY,
+          x2: f.facing === 1 ? ARENA_WIDTH - ARENA_PADDING_X : f.x,
+          y2: beamY,
+          color: '#38bdf8',
+          width: 42,
+          alpha: 1.0,
+        });
+        this.screenShake = 20;
+        this.hitObstaclesInReach(f.x + f.facing * 220, beamY, 260, 160);
+        this.hitClonesAlongSegment(f.slot, f.x, beamY, f.x + f.facing * 600, beamY);
+        this.damageFighter(enemy, f.slot, 36, f.facing * 520, -180, 'PIERCE', f.x);
+        this.spawnBurstParticles(enemy.x, beamY, '#38bdf8', 30, 320, 'spark');
+        break;
+      }
+
+      case 'earth': {
+        // Continental Monolith Eruption - 3 granite pillars erupt sequentially right beneath the enemy!
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        this.sound?.playHammerSlam();
+        this.screenShake = 22;
+        const offsets = [-50, 0, 50];
+        for (const off of offsets) {
+          const px = clamp(enemy.x + off, ARENA_PADDING_X + 30, ARENA_WIDTH - ARENA_PADDING_X - 60);
+          this.spawnPillarObstacle(f.slot, px, 44, 185, 'STONE_PILLAR', 180, 9);
+        }
+        enemy.vy = -580;
+        enemy.grounded = false;
+        this.damageFighter(enemy, f.slot, 34, f.facing * 340, -420, 'HAMMER_SEISMIC', f.x);
+        this.spawnBurstParticles(enemy.x, ARENA_FLOOR_Y - 10, '#78716c', 28, 300, 'shard');
+        break;
+      }
+
+      case 'water': {
+        // Great Deluge Tsunami Surge - 180px tidal wave sweeping arena, drenching opponent & quenching fire!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playFlameRoar();
+        for (let i = this.floorZones.length - 1; i >= 0; i--) {
+          if (this.floorZones[i].kind === 'BLUE_FIRE') {
+            this.floorZones.splice(i, 1);
+          }
+        }
+        enemy.wetTimer = 8.0;
+        enemy.vx = f.facing * 580;
+        enemy.vy = -260;
+        enemy.grounded = false;
+        for (let i = 0; i < 4; i++) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'WATER_JET',
+            x: f.x + f.facing * 30,
+            y: ARENA_FLOOR_Y - 40 - i * 35,
+            vx: f.facing * 520,
+            vy: 0,
+            radius: 14,
+            damage: 8,
+            knockback: 260,
+            isMetallic: false,
+            blueFireCoated: false,
+            gravity: 0,
+            life: 1.8,
+            color: '#0284c7',
+            piercing: true,
+          });
+        }
+        this.damageFighter(enemy, f.slot, 28, f.facing * 440, -220, 'BLUNT', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#38bdf8', 26, 280, 'spark');
+        break;
+      }
+
+      case 'shadow': {
+        // Shadow Veil Execution - cloaks arena in shadow fog, teleports behind enemy for a fatal backstab!
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playSlash();
+        this.arenaDarknessTimer = 1.4;
+        f.x = clamp(enemy.x - enemy.facing * 44, ARENA_PADDING_X + 30, ARENA_WIDTH - ARENA_PADDING_X - 30);
+        f.y = enemy.y;
+        f.facing = enemy.facing;
+        this.damageFighter(enemy, f.slot, 36, f.facing * 360, -180, 'SLASH', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#475569', 30, 260, 'smoke');
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#ef4444', 16, 220, 'spark');
+        break;
+      }
+
+      case 'yo_yo': {
+        // Titanium Buzzsaw Vortex - dual high-speed spinning saw discs trap enemy in blade cage!
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playWeaponClash();
+        f.orbitSawTimer = 3.0;
+        enemy.stunTimer = 0.6;
+        for (const dir of [-1, 1]) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'YOYO_DISK',
+            x: enemy.x + dir * 55,
+            y: enemy.y - 24,
+            vx: -dir * 320,
+            vy: 0,
+            radius: 12,
+            damage: 16,
+            knockback: 180,
+            isMetallic: true,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 2.2,
+            color: '#06b6d4',
+            returning: true,
+          });
+        }
+        this.damageFighter(enemy, f.slot, 30, f.facing * 300, -200, 'SLASH', f.x);
+        break;
+      }
+
+      case 'anchor': {
+        // 500KG Naval Depth Impact - swings massive 500kg anchor, smashing the ground with colossal crater!
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.65;
+        f.activeAttackTimer = 0.65;
+        f.vx = f.facing * 200;
+        f.vy = -340;
+        f.grounded = false;
+        this.sound?.playHammerSlam();
+        this.screenShake = 26;
+        this.shockwaves.push({
+          ownerSlot: f.slot,
+          x: f.x + f.facing * 60,
+          y: ARENA_FLOOR_Y,
+          radius: 10,
+          maxRadius: 320,
+          speed: 680,
+          color: '#64748b',
+          groundOnly: true,
+          hitSlots: new Set<number>([f.slot]),
+        });
+        this.damageFighter(enemy, f.slot, 38, f.facing * 520, -380, 'BLUNT', f.x);
+        this.spawnBurstParticles(f.x + f.facing * 60, ARENA_FLOOR_Y - 8, '#475569', 30, 320, 'shard');
+        break;
+      }
+
+      case 'time': {
+        // Chrono Stasis Rewind - halts enemy in time completely for 1.5s, moves freely, heals +25 HP!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.4;
+        f.activeAttackTimer = 0.4;
+        this.sound?.playPortalWarp();
+        this.timeFreezeTimer = 1.6;
+        this.timeFreezeOwnerSlot = f.slot;
+        f.hp = Math.min(f.maxHp, f.hp + 25);
+        f.burnTimer = 0;
+        f.poisonTimer = 0;
+        f.frostBuildup = 0;
+        enemy.vx = 0;
+        enemy.vy = 0;
+        this.damageFighter(enemy, f.slot, 16, 0, 0, 'BLUNT', f.x);
+        this.spawnBurstParticles(f.x, f.y - 24, '#eab308', 26, 240, 'ring');
+        break;
+      }
+
+      case 'alchemist': {
+        // Magnum Opus Transmutation - master potion triggers cascading Fire, Ice, and Shock explosions!
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playExplosion();
+        this.sound?.playElectroZap();
+        this.createExplosion(enemy.x, enemy.y - 24, f.slot, 24, 260, false, true);
+        enemy.frostBuildup = 80;
+        enemy.burnTimer = 4.5;
+        enemy.stunTimer = 0.6;
+        this.damageFighter(enemy, f.slot, 32, f.facing * 340, -220, 'EXPLOSION', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#f59e0b', 32, 340, 'spark');
+        break;
+      }
+    }
+  }
+
   private resolveFighterWindup(f: FighterRuntime): void {
     const type = f.windupType;
     f.windupType = 'NONE';
@@ -2965,6 +3950,13 @@ export class ArenaWorld {
     victim.hitstunTimer = Math.max(victim.hitstunTimer, 0.14);
     victim.invulnTimer = Math.max(victim.invulnTimer, damageKind === 'FIRE' ? 0.2 : 0.08);
 
+    // Charge Ultimate meters: attacker gains +0.55% per damage, victim gains +0.75% per damage
+    const attacker = this.fighters[attackerSlot];
+    if (attacker && attacker.slot !== victim.slot) {
+      attacker.ultimateMeter = Math.min(100, attacker.ultimateMeter + finalDamage * 0.55);
+    }
+    victim.ultimateMeter = Math.min(100, victim.ultimateMeter + finalDamage * 0.75);
+
     // Naval Anchor heavy ballast reduces incoming knockback by 48%!
     const kbMult = victim.def.id === 'anchor' ? 0.52 : 1;
     const effKbX = kbX * kbMult;
@@ -3345,6 +4337,49 @@ export class ArenaWorld {
       p.vy += p.gravity * localDt;
       p.x += p.vx * localDt;
       p.y += p.vy * localDt;
+
+      // Mid-Air Projectile Clashing! (Opposing elemental projectiles collide & clash mid-air with sparks)
+      let clashed = false;
+      for (let j = this.projectiles.length - 1; j >= 0; j--) {
+        if (j === i) continue;
+        const op = this.projectiles[j];
+        if (
+          op &&
+          op.ownerSlot !== p.ownerSlot &&
+          Math.hypot(op.x - p.x, op.y - p.y) < op.radius + p.radius + 14
+        ) {
+          this.sound?.playWeaponClash();
+          this.spawnBurstParticles((p.x + op.x) * 0.5, (p.y + op.y) * 0.5, '#fde047', 16, 220, 'spark');
+          this.addLog(
+            `MID-AIR CLASH! ${p.kind.replace('_', ' ')} clashed with ${op.kind.replace('_', ' ')}!`,
+            '#fde047'
+          );
+          if (p.kind === 'ROCKET') {
+            this.createExplosion(p.x, p.y, p.ownerSlot, p.damage, p.knockback, false, p.blueFireCoated);
+          }
+          if (op.kind === 'ROCKET') {
+            this.createExplosion(op.x, op.y, op.ownerSlot, op.damage, op.knockback, false, op.blueFireCoated);
+          }
+          if (p.kind === 'ALCHEMY_FLASK') {
+            this.triggerAlchemyBurst(p.x, p.y, p.ownerSlot, p.brewKind || 'FIRE', p.blueFireCoated);
+          }
+          if (op.kind === 'ALCHEMY_FLASK') {
+            this.triggerAlchemyBurst(op.x, op.y, op.ownerSlot, op.brewKind || 'FIRE', op.blueFireCoated);
+          }
+
+          // Both fighters gain +15% ultimate meter for the clash!
+          this.fighters[p.ownerSlot].ultimateMeter = Math.min(100, this.fighters[p.ownerSlot].ultimateMeter + 15);
+          this.fighters[op.ownerSlot].ultimateMeter = Math.min(100, this.fighters[op.ownerSlot].ultimateMeter + 15);
+
+          const idxs = [i, j].sort((a, b) => b - a);
+          for (const idx of idxs) {
+            this.projectiles.splice(idx, 1);
+          }
+          clashed = true;
+          break;
+        }
+      }
+      if (clashed) continue;
 
       // Rocket smoke trail & Blue Fire particle trail
       if (p.kind === 'ROCKET' && Math.random() < 0.65) {
@@ -4574,6 +5609,9 @@ export class ArenaWorld {
 
       // Floor Zone Interactions (Blue Fire, Ice Sheet, Gravity Crush, Acid Pool, Tornado, Chrono Field!)
       f.slipTimer = Math.max(0, f.slipTimer - dt);
+      if (this.arenaIceTimer > 0) {
+        f.slipTimer = 0.35;
+      }
       if (f.recoveryTimer > 0) f.recoveryTimer = Math.max(0, f.recoveryTimer - dt);
       if (f.wetTimer > 0) f.wetTimer = Math.max(0, f.wetTimer - dt);
       for (const z of this.floorZones) {

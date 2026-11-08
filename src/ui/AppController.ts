@@ -738,6 +738,15 @@ export class AppController {
           <div class="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
             <div class="h-full transition-all duration-75" style="width:${Math.max(0, (f.hp / f.maxHp) * 100)}%; background:${f.def.color}"></div>
           </div>
+          <div class="space-y-0.5">
+            <div class="flex items-center justify-between text-[9px] font-mono">
+              <span class="text-slate-400 truncate max-w-[170px]">ULT: ${f.def.ultimateName}</span>
+              <span class="${f.ultimateMeter >= 100 ? 'text-amber-400 font-bold' : 'text-slate-400'}">${f.ultimateMeter >= 100 ? '⚡ READY' : `${Math.floor(f.ultimateMeter)}%`}</span>
+            </div>
+            <div class="w-full h-1 rounded-full bg-slate-800 overflow-hidden">
+              <div class="h-full transition-all duration-75" style="width:${Math.min(100, f.ultimateMeter)}%; background: ${f.ultimateMeter >= 100 ? '#f59e0b' : '#38bdf8'}"></div>
+            </div>
+          </div>
           <div class="flex items-center justify-between text-[10px] font-mono text-slate-400">
             <span>Weapon: ${f.weaponBroken ? 'BROKEN' : f.hasWeapon ? (f.blueFireCoated ? 'FLAME+' : 'ARMED') : 'DROPPED'}</span>
             <span>Panic: ${Math.round(f.panicMeter)}%</span>

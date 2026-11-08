@@ -8,6 +8,7 @@ export interface AICommand {
   crouch: boolean;
   primaryAttack: boolean;
   specialAbility: boolean;
+  ultimate: boolean;
   parryGuard: boolean;
   spinDeflect: boolean;
   wallHang: boolean;
@@ -23,6 +24,7 @@ export class FighterAI {
       crouch: false,
       primaryAttack: false,
       specialAbility: false,
+      ultimate: false,
       parryGuard: false,
       spinDeflect: false,
       wallHang: false,
@@ -261,14 +263,27 @@ export class FighterAI {
         }
       }
 
-      // High projectile shots can be ducked under
-      if (p.incomingThreat.isHighShot && me.grounded && !p.incomingThreat.isStreamBarrage) {
+      // High-velocity sniper shots can be Matrix-ducked under (00:01 in video), respecting evadeCooldown!
+      if (
+        p.incomingThreat.isHighShot &&
+        me.grounded &&
+        !p.incomingThreat.isStreamBarrage &&
+        me.evadeCooldown <= 0
+      ) {
         me.aiState = 'EVADING';
         cmd.crouch = true;
+        me.evadeCooldown = 1.0;
         return cmd;
       }
 
-      // Retaliate with offensive ability if ready!
+      // Priority 0: UNLEASH ULTIMATE to crush incoming assault!
+      if (me.ultimateMeter >= 100 && me.ultimateCooldown <= 0 && me.hasWeapon) {
+        me.aiState = 'ATTACKING';
+        cmd.ultimate = true;
+        return cmd;
+      }
+
+      // Counter-attack with offensive ability or counter-shot to clash mid-air!
       if (me.specialCooldown <= 0) {
         me.aiState = 'ATTACKING';
         cmd.specialAbility = true;
@@ -290,6 +305,12 @@ export class FighterAI {
         cmd.moveDir = p.dirToTarget;
       } else {
         cmd.moveDir = 0;
+      }
+
+      // Priority 0: Finisher Ultimate on defenseless foe!
+      if (me.ultimateMeter >= 100 && me.ultimateCooldown <= 0 && me.hasWeapon) {
+        cmd.ultimate = true;
+        return cmd;
       }
 
       // Execute with highest-damage special or devastating shatter/slam!
@@ -442,6 +463,13 @@ export class FighterAI {
       me.aiState = 'STALKING';
       cmd.moveDir = p.dirToTarget;
 
+      // Priority 0: UNLEASH ULTIMATE!
+      if (me.ultimateMeter >= 100 && me.ultimateCooldown <= 0 && me.hasWeapon) {
+        me.aiState = 'ATTACKING';
+        cmd.ultimate = true;
+        return cmd;
+      }
+
       // Long-range power deployment & gap-closing strikes
       if (me.specialCooldown <= 0) {
         me.aiState = 'ATTACKING';
@@ -463,6 +491,13 @@ export class FighterAI {
       }
     } else {
       // In combat engagement range - POISED TACTICAL RHYTHM!
+      // Priority 0: UNLEASH ULTIMATE!
+      if (me.ultimateMeter >= 100 && me.ultimateCooldown <= 0 && me.hasWeapon) {
+        me.aiState = 'ATTACKING';
+        cmd.ultimate = true;
+        return cmd;
+      }
+
       // Priority 1: Unleash signature ability whenever ready
       if (me.specialCooldown <= 0) {
         me.aiState = 'ATTACKING';

@@ -151,6 +151,7 @@ export class ArenaRenderer {
     this.drawLaserTracers(world);
     this.drawProjectiles(world);
     this.drawParticles(world);
+    this.drawArenaOverlays(world);
 
     ctx.restore(); // end arena interior clip
 
@@ -1307,10 +1308,41 @@ export class ArenaRenderer {
     ctx.roundRect(leftX, barY, barW, barH, 4);
     ctx.stroke();
 
+    // Left Fighter Ultimate Bar
+    const ult0Y = barY + 11;
+    const ult0H = 4;
+    ctx.fillStyle = '#f1f5f9';
+    ctx.beginPath();
+    ctx.roundRect(leftX, ult0Y, barW, ult0H, 2);
+    ctx.fill();
+
+    const ult0Ratio = clamp(f0.ultimateMeter / 100, 0, 1);
+    if (ult0Ratio > 0) {
+      ctx.fillStyle = ult0Ratio >= 1 ? '#f59e0b' : '#38bdf8';
+      if (ult0Ratio >= 1) {
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#f59e0b';
+      }
+      ctx.beginPath();
+      ctx.roundRect(leftX, ult0Y, barW * ult0Ratio, ult0H, 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.roundRect(leftX, ult0Y, barW, ult0H, 2);
+    ctx.stroke();
+
     ctx.fillStyle = f0.def.color;
     ctx.font = '800 11px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(`${f0.def.name.toUpperCase()} (${Math.ceil(f0.hp)})`, leftX, barY - 5);
+    if (f0.ultimateMeter >= 100) {
+      ctx.fillStyle = '#d97706';
+      ctx.font = '800 9px Inter, sans-serif';
+      ctx.fillText(`⚡ ULTIMATE READY!`, leftX, ult0Y + 13);
+    }
 
     const rightX = ARENA_WIDTH - ARENA_PADDING_X - barW;
     ctx.fillStyle = '#f1f5f9';
@@ -1331,9 +1363,77 @@ export class ArenaRenderer {
     ctx.roundRect(rightX, barY, barW, barH, 4);
     ctx.stroke();
 
+    // Right Fighter Ultimate Bar
+    const ult1Y = barY + 11;
+    const ult1H = 4;
+    ctx.fillStyle = '#f1f5f9';
+    ctx.beginPath();
+    ctx.roundRect(rightX, ult1Y, barW, ult1H, 2);
+    ctx.fill();
+
+    const ult1Ratio = clamp(f1.ultimateMeter / 100, 0, 1);
+    if (ult1Ratio > 0) {
+      ctx.fillStyle = ult1Ratio >= 1 ? '#f59e0b' : '#38bdf8';
+      if (ult1Ratio >= 1) {
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#f59e0b';
+      }
+      ctx.beginPath();
+      ctx.roundRect(rightX + barW * (1 - ult1Ratio), ult1Y, barW * ult1Ratio, ult1H, 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.roundRect(rightX, ult1Y, barW, ult1H, 2);
+    ctx.stroke();
+
     ctx.fillStyle = f1.def.color;
     ctx.textAlign = 'right';
     ctx.fillText(`(${Math.ceil(f1.hp)}) ${f1.def.name.toUpperCase()}`, rightX + barW, barY - 5);
+    if (f1.ultimateMeter >= 100) {
+      ctx.fillStyle = '#d97706';
+      ctx.font = '800 9px Inter, sans-serif';
+      ctx.fillText(`ULTIMATE READY! ⚡`, rightX + barW, ult1Y + 13);
+    }
+
+    // Cinematic Active Ultimate Announcement Banner
+    if (world.activeUltimateBanner && world.activeUltimateBanner.timer > 0) {
+      const banner = world.activeUltimateBanner;
+      const progress = banner.timer / banner.maxTimer;
+      const alpha = progress > 0.85 ? (1 - progress) / 0.15 : progress < 0.15 ? progress / 0.15 : 1;
+      const cardW = 540;
+      const cardH = 56;
+      const cardX = ARENA_WIDTH * 0.5 - cardW * 0.5;
+      const cardY = ARENA_TOP + 18;
+
+      ctx.save();
+      ctx.globalAlpha = clamp(alpha, 0, 1);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+      ctx.beginPath();
+      ctx.roundRect(cardX, cardY, cardW, cardH, 8);
+      ctx.fill();
+
+      ctx.strokeStyle = banner.color;
+      ctx.lineWidth = 2.4;
+      ctx.shadowBlur = 16;
+      ctx.shadowColor = banner.color;
+      ctx.beginPath();
+      ctx.roundRect(cardX, cardY, cardW, cardH, 8);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.textAlign = 'center';
+      ctx.font = '900 16px Inter, sans-serif';
+      ctx.fillStyle = banner.color;
+      ctx.fillText(`⚡ ${banner.title} ⚡`, ARENA_WIDTH * 0.5, cardY + 23);
+
+      ctx.font = '600 11px Inter, sans-serif';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillText(banner.subText, ARENA_WIDTH * 0.5, cardY + 43);
+      ctx.restore();
+    }
 
     // Subtle Waiting-to-Start Prompt
     if (!world.isRunning && !world.result && world.elapsedSec === 0) {
@@ -1370,5 +1470,42 @@ export class ArenaRenderer {
     }
 
     ctx.restore();
+  }
+
+  private drawArenaOverlays(world: ArenaWorld): void {
+    const ctx = this.ctx;
+    const ax = ARENA_PADDING_X;
+    const ay = ARENA_TOP;
+    const aw = ARENA_WIDTH - ARENA_PADDING_X * 2;
+    const ah = ARENA_FLOOR_Y - ARENA_TOP;
+
+    if (world.arenaIceTimer > 0) {
+      ctx.save();
+      const alpha = clamp(world.arenaIceTimer / 1.5, 0, 0.4);
+      ctx.fillStyle = `rgba(186, 230, 253, ${alpha})`;
+      ctx.fillRect(ax, ay, aw, ah);
+
+      // Frost border vignette
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(ax + 3, ay + 3, aw - 6, ah - 6);
+      ctx.restore();
+    }
+
+    if (world.arenaDarknessTimer > 0) {
+      ctx.save();
+      const alpha = clamp(world.arenaDarknessTimer / 0.8, 0, 0.72);
+      ctx.fillStyle = `rgba(15, 23, 42, ${alpha})`;
+      ctx.fillRect(ax, ay, aw, ah);
+      ctx.restore();
+    }
+
+    if (world.timeFreezeTimer > 0) {
+      ctx.save();
+      const alpha = clamp(world.timeFreezeTimer / 0.5, 0, 0.22);
+      ctx.fillStyle = `rgba(234, 179, 8, ${alpha})`;
+      ctx.fillRect(ax, ay, aw, ah);
+      ctx.restore();
+    }
   }
 }

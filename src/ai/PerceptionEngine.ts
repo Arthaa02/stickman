@@ -164,7 +164,8 @@ export class PerceptionEngine {
               projectile: p,
               timeToImpact: tti,
               fromDir: p.x > me.x ? 1 : -1,
-              isHighShot: predictedY < me.y - 14,
+              // Only true high-velocity headshots (like Sniper high-caliber shots at 00:01 in video) can be ducked under!
+              isHighShot: p.kind === 'SNIPER_BULLET' && predictedY < me.y - 28,
               isStreamBarrage: p.kind === 'FLAME_STREAM' || incomingCount >= 2,
               isMeleeWindup: false,
               isSniperLaserLock: false,
