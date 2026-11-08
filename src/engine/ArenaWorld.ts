@@ -459,11 +459,11 @@ export class ArenaWorld {
 
     for (const f of this.fighters) {
       if (f.hp > 0 && !f.surrendered && f.aiState !== 'DEFEATED') {
-        f.ultimateMeter = Math.min(100, f.ultimateMeter + dt * 0.5);
+        f.ultimateMeter = Math.min(100, f.ultimateMeter + dt * 2.2);
         if (f.ultimateCooldown > 0) f.ultimateCooldown = Math.max(0, f.ultimateCooldown - dt);
         if (f.ultimateActiveTimer > 0) f.ultimateActiveTimer = Math.max(0, f.ultimateActiveTimer - dt);
 
-        // Otomatis langsung cast ultimate ketika mana penuh (100%) dan off cooldown!
+        // Otomatis langsung cast ultimate ketika mana penuh (100%) dan bisa digunakan berulang kali!
         if (f.ultimateMeter >= 100 && f.ultimateCooldown <= 0 && f.hasWeapon && !f.weaponBroken) {
           const enemy = this.fighters[f.slot === 0 ? 1 : 0];
           this.executeUltimate(f, { x: enemy.x, y: enemy.y - 24 });
@@ -2493,12 +2493,12 @@ export class ArenaWorld {
 
       case 'anchor': {
         // Hop + Naval Depth-Charge Anchor Drop with colossal weight telegraph!
-        f.vx = f.facing * 165;
-        f.vy = -215;
+        f.vx = f.facing * 145;
+        f.vy = -180;
         f.grounded = false;
         f.windupType = 'HAMMER_SLAM';
-        f.windupMax = 0.46;
-        f.windupTimer = 0.46;
+        f.windupMax = 0.48;
+        f.windupTimer = 0.48;
         break;
       }
 
@@ -2603,7 +2603,7 @@ export class ArenaWorld {
   private executeUltimate(f: FighterRuntime, targetPos: Vec2): void {
     if (f.ultimateMeter < 100 || f.ultimateCooldown > 0) return;
     f.ultimateMeter = 0;
-    f.ultimateCooldown = 18.0;
+    f.ultimateCooldown = 0.5; // Debounce singkat agar bisa langsung dipakai lagi saat mana penuh kembali
     f.ultimateActiveTimer = 1.6;
     f.windupTimer = 0;
     f.windupType = 'NONE';
@@ -3460,26 +3460,26 @@ export class ArenaWorld {
       case 'anchor': {
         // 500KG Naval Depth Impact - swings massive 500kg anchor, smashing the ground with colossal crater!
         f.attackStyle = 'SLASH_DOWN';
-        f.attackAnimDuration = 0.65;
-        f.activeAttackTimer = 0.65;
-        f.vx = f.facing * 200;
-        f.vy = -340;
+        f.attackAnimDuration = 0.6;
+        f.activeAttackTimer = 0.6;
+        f.vx = f.facing * 170;
+        f.vy = -290;
         f.grounded = false;
         this.sound?.playHammerSlam();
-        this.screenShake = 26;
+        this.screenShake = 16;
         this.shockwaves.push({
           ownerSlot: f.slot,
           x: f.x + f.facing * 60,
           y: ARENA_FLOOR_Y,
           radius: 10,
-          maxRadius: 320,
-          speed: 680,
+          maxRadius: 250,
+          speed: 580,
           color: '#64748b',
           groundOnly: true,
-          hitSlots: new Set<number>([f.slot]),
+          hitSlots: new Set<number>([f.slot, enemy.slot]),
         });
-        this.damageFighter(enemy, f.slot, 38, f.facing * 520, -380, 'BLUNT', f.x);
-        this.spawnBurstParticles(f.x + f.facing * 60, ARENA_FLOOR_Y - 8, '#475569', 30, 320, 'shard');
+        this.damageFighter(enemy, f.slot, 25, f.facing * 360, -280, 'BLUNT', f.x);
+        this.spawnBurstParticles(f.x + f.facing * 60, ARENA_FLOOR_Y - 8, '#475569', 24, 280, 'shard');
         break;
       }
 
@@ -3641,7 +3641,7 @@ export class ArenaWorld {
       }
 
       if (enemy.def.id === 'rubber') {
-        const dmg = isAnchor ? 14 : 15;
+        const dmg = isAnchor ? 13 : 15;
         this.damageFighter(enemy, f.slot, dmg, f.facing * 360, -320, 'BLUNT', impactX);
         enemy.stretchScaleY = 0.65;
         enemy.stretchScaleX = 1.45;
@@ -3651,9 +3651,9 @@ export class ArenaWorld {
         this.damageFighter(
           enemy,
           f.slot,
-          isAnchor ? 28 : 26,
-          kbDir * (isAnchor ? 320 : 340),
-          isAnchor ? -240 : -280,
+          isAnchor ? 24 : 26,
+          kbDir * (isAnchor ? 290 : 340),
+          isAnchor ? -220 : -280,
           'HAMMER_SEISMIC',
           isAnchor ? enemy.x - enemy.facing * 32 : f.x,
           f.blueFireCoated
@@ -3671,8 +3671,8 @@ export class ArenaWorld {
       x: impactX,
       y: ARENA_FLOOR_Y,
       radius: 16,
-      maxRadius: isAnchor ? 240 : 260,
-      speed: 560,
+      maxRadius: isAnchor ? 220 : 260,
+      speed: isAnchor ? 520 : 560,
       color: isAnchor ? '#38bdf8' : '#fbbf24',
       groundOnly: true,
       hitSlots: swHitSlots,
@@ -3971,22 +3971,22 @@ export class ArenaWorld {
     victim.hitstunTimer = Math.max(victim.hitstunTimer, 0.14);
     victim.invulnTimer = Math.max(victim.invulnTimer, damageKind === 'FIRE' ? 0.2 : 0.08);
 
-    // Charge Ultimate meters: attacker gains +0.32% per damage, victim gains +0.42% per damage
+    // Charge Ultimate meters: attacker gains +0.42% per damage, victim gains +0.55% per damage
     const attacker = this.fighters[attackerSlot];
     if (attacker && attacker.slot !== victim.slot) {
-      attacker.ultimateMeter = Math.min(100, attacker.ultimateMeter + finalDamage * 0.32);
+      attacker.ultimateMeter = Math.min(100, attacker.ultimateMeter + finalDamage * 0.42);
       if (attacker.ultimateMeter >= 100 && attacker.ultimateCooldown <= 0 && attacker.hasWeapon && !attacker.weaponBroken) {
         this.executeUltimate(attacker, { x: victim.x, y: victim.y - 24 });
       }
     }
-    victim.ultimateMeter = Math.min(100, victim.ultimateMeter + finalDamage * 0.42);
+    victim.ultimateMeter = Math.min(100, victim.ultimateMeter + finalDamage * 0.55);
     if (victim.ultimateMeter >= 100 && victim.ultimateCooldown <= 0 && victim.hasWeapon && !victim.weaponBroken) {
       const enemy = this.fighters[victim.slot === 0 ? 1 : 0];
       this.executeUltimate(victim, { x: enemy.x, y: enemy.y - 24 });
     }
 
-    // Naval Anchor heavy ballast reduces incoming knockback by 48%!
-    const kbMult = victim.def.id === 'anchor' ? 0.52 : 1;
+    // Naval Anchor heavy ballast reduces incoming knockback by 25% (nerfed from 48% to allow counterplay)
+    const kbMult = victim.def.id === 'anchor' ? 0.75 : 1;
     const effKbX = kbX * kbMult;
     const effKbY = kbY * kbMult;
 
@@ -4544,6 +4544,10 @@ export class ArenaWorld {
       let hitObs = false;
       for (let o = this.obstacles.length - 1; o >= 0; o--) {
         const obs = this.obstacles[o];
+        // Serangan proyektil milik spawner bisa tembus (go through), milik enemy tetap terhalang!
+        if (obs.ownerSlot === p.ownerSlot) {
+          continue;
+        }
         const hit = segmentIntersectsAABB(prevX, prevY, p.x, p.y, obs.x, obs.y, obs.width, obs.height);
         if (hit) {
           if (p.kind === 'SONIC_WAVE') {

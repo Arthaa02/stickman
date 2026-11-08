@@ -101,6 +101,10 @@ export class PerceptionEngine {
     let bestT = 1.0;
 
     for (const obs of ctx.obstacles) {
+      // Dinding milik sendiri tidak menghalangi tembakan proyektil bagi spawner (Glass / Earth)
+      if (obs.ownerSlot === me.slot && (me.def.id === 'glass' || me.def.id === 'earth')) {
+        continue;
+      }
       const hit = segmentIntersectsAABB(
         me.x,
         me.y - 26,
