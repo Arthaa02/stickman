@@ -1172,6 +1172,184 @@ export class ArenaRenderer {
           blueFireCoated: p.blueFireCoated,
           timeSec: world.elapsedSec,
         });
+      } else if (p.kind === 'CROSSBOW_BOLT') {
+        ctx.strokeStyle = '#78350f';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.moveTo(-10, 0);
+        ctx.lineTo(8, 0);
+        ctx.stroke();
+        ctx.fillStyle = '#64748b';
+        ctx.beginPath();
+        ctx.moveTo(8, -3);
+        ctx.lineTo(14, 0);
+        ctx.lineTo(8, 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(-12, -2.5, 4, 5);
+      } else if (p.kind === 'PLASMA_BALL') {
+        ctx.fillStyle = 'rgba(6, 182, 212, 0.35)';
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 1.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#06b6d4';
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.kind === 'WOOD_ARROW') {
+        ctx.strokeStyle = '#15803d';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(-12, 0);
+        ctx.lineTo(9, 0);
+        ctx.stroke();
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.moveTo(9, -3.5);
+        ctx.lineTo(15, 0);
+        ctx.lineTo(9, 3.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#166534';
+        ctx.fillRect(-13, -2, 4, 4);
+      } else if (p.kind === 'SENBON_NEEDLE') {
+        ctx.fillStyle = '#e2e8f0';
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(-11, 0);
+        ctx.lineTo(-4, -1.4);
+        ctx.lineTo(11, 0);
+        ctx.lineTo(-4, 1.4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (p.kind === 'CANNONBALL') {
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#94a3b8';
+        ctx.beginPath();
+        ctx.arc(-3, -3, p.radius * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.kind === 'PLAYING_CARD') {
+        ctx.rotate(world.elapsedSec * 16);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#dc2626';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.roundRect(-8, -11, 16, 22, 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#dc2626';
+        ctx.beginPath();
+        ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.kind === 'RAILGUN_SLUG') {
+        const grad = ctx.createLinearGradient(-35, 0, 15, 0);
+        grad.addColorStop(0, 'rgba(59, 130, 246, 0)');
+        grad.addColorStop(0.6, 'rgba(96, 165, 250, 0.9)');
+        grad.addColorStop(1, '#60a5fa');
+        ctx.fillStyle = grad;
+        ctx.fillRect(-35, -2, 50, 4);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(8, -1.2, 8, 2.4);
+      } else if (p.kind === 'STAR_SHARD') {
+        ctx.rotate(world.elapsedSec * 10);
+        ctx.fillStyle = '#a855f7';
+        ctx.beginPath();
+        ctx.moveTo(0, -9);
+        ctx.lineTo(2.5, -2.5);
+        ctx.lineTo(9, 0);
+        ctx.lineTo(2.5, 2.5);
+        ctx.lineTo(0, 9);
+        ctx.lineTo(-2.5, 2.5);
+        ctx.lineTo(-9, 0);
+        ctx.lineTo(-2.5, -2.5);
+        ctx.closePath();
+        ctx.fill();
+      } else if (p.kind === 'ROLLING_SAW') {
+        ctx.rotate(world.elapsedSec * 32);
+        ctx.fillStyle = '#0f766e';
+        ctx.strokeStyle = '#2dd4bf';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#115e59';
+        ctx.beginPath();
+        ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.kind === 'HARPOON_BOLT') {
+        ctx.strokeStyle = '#0284c7';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(-16, 0);
+        ctx.lineTo(10, 0);
+        ctx.stroke();
+        ctx.fillStyle = '#0284c7';
+        ctx.beginPath();
+        ctx.moveTo(10, -4.5);
+        ctx.lineTo(18, 0);
+        ctx.lineTo(10, 4.5);
+        ctx.lineTo(12, 0);
+        ctx.closePath();
+        ctx.fill();
+      } else if (p.kind === 'DRONE_LASER') {
+        ctx.fillStyle = '#818cf8';
+        ctx.fillRect(-14, -2, 28, 4);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-8, -1, 16, 2);
+      } else if (p.kind === 'AMETHYST_SHARD') {
+        ctx.rotate(world.elapsedSec * 8);
+        ctx.fillStyle = 'rgba(147, 51, 234, 0.88)';
+        ctx.strokeStyle = '#c084fc';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(-8, -6);
+        ctx.lineTo(0, -11);
+        ctx.lineTo(9, -3);
+        ctx.lineTo(6, 8);
+        ctx.lineTo(-4, 9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (p.kind === 'MORTAR_SHELL') {
+        ctx.fillStyle = '#3f3f46';
+        ctx.strokeStyle = '#71717a';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.roundRect(-9, -5, 16, 10, 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#e11d48';
+        ctx.beginPath();
+        ctx.moveTo(7, -5);
+        ctx.lineTo(13, 0);
+        ctx.lineTo(7, 5);
+        ctx.closePath();
+        ctx.fill();
+      } else if (p.kind === 'ASTRAL_PALM') {
+        ctx.fillStyle = 'rgba(217, 119, 6, 0.45)';
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius, -0.65, 0.65);
+        ctx.lineTo(-12, 18);
+        ctx.lineTo(-18, -18);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
       } else {
         ctx.fillStyle = p.blueFireCoated ? '#0b3be0' : p.color;
         ctx.beginPath();

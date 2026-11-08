@@ -30,7 +30,39 @@ export type FighterId =
   | 'yo_yo'
   | 'anchor'
   | 'time'
-  | 'alchemist';
+  | 'alchemist'
+  | 'crossbow'
+  | 'nunchaku'
+  | 'plasma'
+  | 'axe'
+  | 'drill'
+  | 'shield_blade'
+  | 'needle'
+  | 'magma'
+  | 'bow'
+  | 'daggers'
+  | 'flail'
+  | 'mirror'
+  | 'cannon'
+  | 'fan'
+  | 'halberd'
+  | 'shuriken'
+  | 'cards'
+  | 'railgun'
+  | 'bell'
+  | 'staff'
+  | 'meteor'
+  | 'glove'
+  | 'saw_blade'
+  | 'speargun'
+  | 'trident'
+  | 'claymore'
+  | 'drone'
+  | 'vortex'
+  | 'crystal'
+  | 'mortar'
+  | 'tonfa'
+  | 'god_hand';
 
 export type Archetype =
   | 'AGGRO_DASHER'
@@ -202,6 +234,8 @@ export interface FighterRuntime {
   burnTickAccum: number;
   poisonTimer: number;
   poisonTickAccum: number;
+  bleedTimer: number;
+  bleedTickAccum: number;
   chronoSlowTimer: number;
   phaseTimer: number; // intangible shadow smoke phase
   orbitSawTimer: number; // Yo-Yo 360 buzzsaw orbit
@@ -307,7 +341,21 @@ export type ProjectileKind =
   | 'BOULDER'
   | 'YOYO_DISK'
   | 'CHRONO_BOLT'
-  | 'ALCHEMY_FLASK';
+  | 'ALCHEMY_FLASK'
+  | 'CROSSBOW_BOLT'
+  | 'PLASMA_BALL'
+  | 'WOOD_ARROW'
+  | 'SENBON_NEEDLE'
+  | 'CANNONBALL'
+  | 'PLAYING_CARD'
+  | 'RAILGUN_SLUG'
+  | 'STAR_SHARD'
+  | 'ROLLING_SAW'
+  | 'HARPOON_BOLT'
+  | 'DRONE_LASER'
+  | 'AMETHYST_SHARD'
+  | 'MORTAR_SHELL'
+  | 'ASTRAL_PALM';
 
 export interface Projectile {
   id: number;

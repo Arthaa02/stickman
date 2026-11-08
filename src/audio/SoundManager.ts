@@ -428,6 +428,43 @@ export class SoundManager {
     osc.stop(t + 0.13);
   }
 
+  /** High-tech piercing laser beam beam-down sweep */
+  public playLaserBeam(): void {
+    const ctx = this.ensureContext('laser', 50);
+    if (!ctx || !this.masterGain || this.isMuted) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1200, t);
+    osc.frequency.exponentialRampToValueAtTime(220, t + 0.24);
+    gain.gain.setValueAtTime(0.4, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.26);
+  }
+
+  /** Mechanical motor buzzing rev for saws and drills */
+  public playChainsawRev(): void {
+    const ctx = this.ensureContext('chainsaw', 60);
+    if (!ctx || !this.masterGain || this.isMuted) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(95, t);
+    osc.frequency.linearRampToValueAtTime(240, t + 0.18);
+    osc.frequency.linearRampToValueAtTime(140, t + 0.32);
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.35);
+  }
+
   public announcerEnabled = true;
   private lastAnnounceTime = 0;
 

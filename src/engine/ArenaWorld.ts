@@ -228,6 +228,8 @@ export class ArenaWorld {
       burnTickAccum: 0,
       poisonTimer: 0,
       poisonTickAccum: 0,
+      bleedTimer: 0,
+      bleedTickAccum: 0,
       chronoSlowTimer: 0,
       phaseTimer: 0,
       orbitSawTimer: 0,
@@ -1779,6 +1781,691 @@ export class ArenaWorld {
         });
         break;
       }
+
+      case 'crossbow': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.28;
+        f.activeAttackTimer = 0.28;
+        this.sound?.playSnap();
+        const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
+        for (let i = 0; i < 3; i++) {
+          const spreadAng = (i - 1) * 0.08;
+          const cos = Math.cos(spreadAng);
+          const sin = Math.sin(spreadAng);
+          const vx = (dir.x * cos - dir.y * sin) * 720;
+          const vy = (dir.x * sin + dir.y * cos) * 720;
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'CROSSBOW_BOLT',
+            x: f.x + f.facing * 24,
+            y: f.y - 28,
+            vx,
+            vy,
+            radius: 5,
+            damage: 6,
+            knockback: 100,
+            isMetallic: true,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 1.2,
+            color: '#b45309',
+          });
+        }
+        break;
+      }
+
+      case 'nunchaku': {
+        f.attackStyle = f.comboStep === 0 ? 'SLASH_DOWN' : 'SLASH_UP';
+        f.attackAnimDuration = 0.18;
+        f.activeAttackTimer = 0.18;
+        f.vx += f.facing * 140;
+        this.sound?.playSlash();
+        this.addSlashArc(f.x + f.facing * 20, f.y - 24, f.facing, 90, '#eab308');
+        this.hitObstaclesInReach(f.x + f.facing * 60, f.y - 24, 70, 18);
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 55), enemy.y - f.y);
+        if (dist < 80) {
+          this.damageFighter(enemy, f.slot, 14, f.facing * 160, -120, 'BLUNT', f.x);
+        }
+        break;
+      }
+
+      case 'plasma': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.26;
+        f.activeAttackTimer = 0.26;
+        this.sound?.playLaserBeam();
+        const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'PLASMA_BALL',
+          x: f.x + f.facing * 26,
+          y: f.y - 28,
+          vx: dir.x * 540,
+          vy: dir.y * 540,
+          radius: 9,
+          damage: 16,
+          knockback: 190,
+          isMetallic: false,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 0,
+          life: 2.2,
+          bouncesLeft: 3,
+          color: '#06b6d4',
+        });
+        break;
+      }
+
+      case 'axe': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.38;
+        f.activeAttackTimer = 0.38;
+        f.vx += f.facing * 150;
+        this.sound?.playSlash();
+        this.addSlashArc(f.x + f.facing * 22, f.y - 24, f.facing, 125, '#78350f');
+        this.hitObstaclesInReach(f.x + f.facing * 80, f.y - 24, 85, 32);
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 75), enemy.y - f.y);
+        if (dist < 95) {
+          this.damageFighter(enemy, f.slot, 26, f.facing * 340, -220, 'SLASH', f.x);
+          this.screenShake = 8;
+        }
+        break;
+      }
+
+      case 'drill': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.30;
+        f.activeAttackTimer = 0.30;
+        f.vx = f.facing * 260;
+        this.sound?.playChainsawRev();
+        this.hitObstaclesInReach(f.x + f.facing * 70, f.y - 24, 75, 30);
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 65), enemy.y - f.y);
+        if (dist < 88) {
+          this.damageFighter(enemy, f.slot, 19, f.facing * 240, -140, 'SLASH', f.x);
+          this.spawnBurstParticles(enemy.x, enemy.y - 24, '#ea580c', 12, 180, 'spark');
+        }
+        break;
+      }
+
+      case 'shield_blade': {
+        f.attackStyle = f.comboStep === 0 ? 'SLASH_DOWN' : 'THRUST';
+        f.attackAnimDuration = 0.24;
+        f.activeAttackTimer = 0.24;
+        f.vx += f.facing * 130;
+        this.sound?.playParry();
+        this.addSlashArc(f.x + f.facing * 16, f.y - 24, f.facing, 95, '#94a3b8');
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 62), enemy.y - f.y);
+        if (dist < 85) {
+          this.damageFighter(enemy, f.slot, 17, f.facing * 200, -150, 'SLASH', f.x);
+          enemy.hitstunTimer = Math.max(enemy.hitstunTimer, 0.22);
+        }
+        break;
+      }
+
+      case 'needle': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.20;
+        f.activeAttackTimer = 0.20;
+        this.sound?.playSnap();
+        const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
+        for (let i = 0; i < 3; i++) {
+          const spread = (i - 1) * 0.07;
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'SENBON_NEEDLE',
+            x: f.x + f.facing * 20,
+            y: f.y - 28,
+            vx: (dir.x + spread * f.facing) * 820,
+            vy: (dir.y + spread) * 820,
+            radius: 4,
+            damage: 5,
+            knockback: 70,
+            isMetallic: true,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 0.9,
+            color: '#cbd5e1',
+          });
+        }
+        break;
+      }
+
+      case 'magma': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.42;
+        f.activeAttackTimer = 0.42;
+        f.vx += f.facing * 130;
+        this.sound?.playHammerSlam();
+        this.hitObstaclesInReach(f.x + f.facing * 75, f.y - 24, 85, 30);
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 70), enemy.y - f.y);
+        if (dist < 92) {
+          this.damageFighter(enemy, f.slot, 27, f.facing * 320, -210, 'BLUNT', f.x);
+          enemy.burnTimer = Math.max(enemy.burnTimer, 2.0);
+          this.screenShake = 9;
+        }
+        break;
+      }
+
+      case 'bow': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        this.sound?.playSnap();
+        const dx = targetPos.x - f.x;
+        const dy = targetPos.y - (f.y - 28);
+        const dist = Math.hypot(dx, dy);
+        const speed = 680;
+        const vx = (dx / dist) * speed;
+        const vy = (dy / dist) * speed - 60;
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'WOOD_ARROW',
+          x: f.x + f.facing * 24,
+          y: f.y - 28,
+          vx,
+          vy,
+          radius: 5,
+          damage: 17,
+          knockback: 180,
+          isMetallic: false,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 280,
+          life: 2.0,
+          color: '#15803d',
+        });
+        break;
+      }
+
+      case 'daggers': {
+        f.attackStyle = f.comboStep === 0 ? 'SLASH_DOWN' : 'SLASH_UP';
+        f.attackAnimDuration = 0.16;
+        f.activeAttackTimer = 0.16;
+        f.vx += f.facing * 160;
+        this.sound?.playSlash();
+        this.addSlashArc(f.x + f.facing * 15, f.y - 22, f.facing, 85, '#818cf8');
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 50), enemy.y - f.y);
+        if (dist < 75) {
+          this.damageFighter(enemy, f.slot, 13, f.facing * 140, -100, 'SLASH', f.x);
+          enemy.poisonTimer = Math.max(enemy.poisonTimer, 2.0);
+        }
+        break;
+      }
+
+      case 'flail': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.36;
+        f.activeAttackTimer = 0.36;
+        f.vx += f.facing * 125;
+        this.sound?.playSlash();
+        this.addSlashArc(f.x + f.facing * 20, f.y - 24, f.facing, 115, '#78716c');
+        this.hitObstaclesInReach(f.x + f.facing * 80, f.y - 24, 85, 28);
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 75), enemy.y - f.y);
+        if (dist < 92) {
+          this.damageFighter(enemy, f.slot, 24, f.facing * 310, -220, 'BLUNT', f.x);
+        }
+        break;
+      }
+
+      case 'mirror': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.28;
+        f.activeAttackTimer = 0.28;
+        this.sound?.playLaserBeam();
+        const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'GLASS_DAGGER',
+          x: f.x + f.facing * 25,
+          y: f.y - 28,
+          vx: dir.x * 650,
+          vy: dir.y * 650,
+          radius: 7,
+          damage: 16,
+          knockback: 160,
+          isMetallic: false,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 0,
+          life: 1.8,
+          bouncesLeft: 2,
+          color: '#99f6e4',
+        });
+        break;
+      }
+
+      case 'cannon': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.40;
+        f.activeAttackTimer = 0.40;
+        f.vx -= f.facing * 220;
+        this.sound?.playExplosion();
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'CANNONBALL',
+          x: f.x + f.facing * 30,
+          y: f.y - 22,
+          vx: f.facing * 440,
+          vy: -60,
+          radius: 12,
+          damage: 28,
+          knockback: 360,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 600,
+          life: 3.0,
+          bouncesLeft: 3,
+          color: '#334155',
+        });
+        this.screenShake = 12;
+        break;
+      }
+
+      case 'fan': {
+        f.attackStyle = 'SLASH_UP';
+        f.attackAnimDuration = 0.22;
+        f.activeAttackTimer = 0.22;
+        f.vx += f.facing * 120;
+        this.sound?.playSlash();
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'WIND_BLADE',
+          x: f.x + f.facing * 24,
+          y: f.y - 24,
+          vx: f.facing * 580,
+          vy: 0,
+          radius: 12,
+          damage: 12,
+          knockback: 150,
+          isMetallic: false,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 0,
+          life: 1.2,
+          color: '#f43f5e',
+        });
+        break;
+      }
+
+      case 'halberd': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        f.vx += f.facing * 140;
+        this.sound?.playSlash();
+        this.addSlashArc(f.x + f.facing * 20, f.y - 24, f.facing, 120, '#eab308');
+        this.hitObstaclesInReach(f.x + f.facing * 80, f.y - 24, 85, 28);
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 75), enemy.y - f.y);
+        if (dist < 92) {
+          this.damageFighter(enemy, f.slot, 22, f.facing * 280, -180, 'SLASH', f.x);
+        }
+        break;
+      }
+
+      case 'shuriken': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.26;
+        f.activeAttackTimer = 0.26;
+        this.sound?.playSlash();
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'BOOMERANG',
+          x: f.x + f.facing * 24,
+          y: f.y - 26,
+          vx: f.facing * 520,
+          vy: 0,
+          radius: 14,
+          damage: 16,
+          knockback: 170,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 0,
+          life: 2.2,
+          returning: true,
+          color: '#64748b',
+        });
+        break;
+      }
+
+      case 'cards': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.22;
+        f.activeAttackTimer = 0.22;
+        this.sound?.playSnap();
+        const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
+        for (let i = 0; i < 3; i++) {
+          const spread = (i - 1) * 0.12;
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'PLAYING_CARD',
+            x: f.x + f.facing * 20,
+            y: f.y - 28,
+            vx: (dir.x + spread * f.facing) * 620,
+            vy: (dir.y + spread) * 620,
+            radius: 6,
+            damage: 6,
+            knockback: 90,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 1.4,
+            color: '#ef4444',
+          });
+        }
+        break;
+      }
+
+      case 'railgun': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.42;
+        f.activeAttackTimer = 0.42;
+        f.vx -= f.facing * 280;
+        this.sound?.playLaserBeam();
+        const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'RAILGUN_SLUG',
+          x: f.x + f.facing * 30,
+          y: f.y - 28,
+          vx: dir.x * 1200,
+          vy: dir.y * 1200,
+          radius: 6,
+          damage: 32,
+          knockback: 380,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 0,
+          life: 0.8,
+          piercing: true,
+          color: '#38bdf8',
+        });
+        this.screenShake = 10;
+        break;
+      }
+
+      case 'bell': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.38;
+        f.activeAttackTimer = 0.38;
+        this.sound?.playGlassRise();
+        this.shockwaves.push({
+          ownerSlot: f.slot,
+          x: f.x + f.facing * 40,
+          y: ARENA_FLOOR_Y,
+          radius: 12,
+          maxRadius: 220,
+          speed: 540,
+          color: '#ca8a04',
+          groundOnly: false,
+          hitSlots: new Set<number>([f.slot]),
+        });
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 60), enemy.y - f.y);
+        if (dist < 85) {
+          this.damageFighter(enemy, f.slot, 22, f.facing * 280, -180, 'BLUNT', f.x);
+          enemy.stunTimer = Math.max(enemy.stunTimer, 0.45);
+        }
+        break;
+      }
+
+      case 'staff': {
+        f.attackStyle = f.comboStep === 0 ? 'SLASH_DOWN' : 'THRUST';
+        f.attackAnimDuration = 0.20;
+        f.activeAttackTimer = 0.20;
+        f.vx += f.facing * 140;
+        this.sound?.playSlash();
+        this.addSlashArc(f.x + f.facing * 18, f.y - 24, f.facing, 105, '#fca5a5');
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 65), enemy.y - f.y);
+        if (dist < 88) {
+          this.damageFighter(enemy, f.slot, 15, f.facing * 190, -140, 'BLUNT', f.x);
+        }
+        break;
+      }
+
+      case 'meteor': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.30;
+        f.activeAttackTimer = 0.30;
+        this.sound?.playLaserBeam();
+        const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'STAR_SHARD',
+          x: f.x + f.facing * 24,
+          y: f.y - 28,
+          vx: dir.x * 560,
+          vy: dir.y * 560,
+          radius: 8,
+          damage: 16,
+          knockback: 180,
+          isMetallic: false,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 0,
+          life: 1.8,
+          color: '#c084fc',
+        });
+        break;
+      }
+
+      case 'glove': {
+        f.attackStyle = f.comboStep === 0 ? 'THRUST' : 'SLASH_UP';
+        f.attackAnimDuration = 0.18;
+        f.activeAttackTimer = 0.18;
+        f.vx += f.facing * 150;
+        this.sound?.playSnap();
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 50), enemy.y - f.y);
+        if (dist < 78) {
+          this.damageFighter(enemy, f.slot, 20, f.facing * 220, -160, 'BLUNT', f.x);
+          enemy.hitstunTimer = Math.max(enemy.hitstunTimer, 0.24);
+        }
+        break;
+      }
+
+      case 'saw_blade': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.28;
+        f.activeAttackTimer = 0.28;
+        this.sound?.playChainsawRev();
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'ROLLING_SAW',
+          x: f.x + f.facing * 24,
+          y: ARENA_FLOOR_Y - 14,
+          vx: f.facing * 480,
+          vy: 0,
+          radius: 12,
+          damage: 16,
+          knockback: 180,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 600,
+          life: 2.8,
+          bouncesLeft: 4,
+          color: '#0f766e',
+        });
+        break;
+      }
+
+      case 'speargun': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        this.sound?.playSnap();
+        const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'HARPOON_BOLT',
+          x: f.x + f.facing * 26,
+          y: f.y - 28,
+          vx: dir.x * 680,
+          vy: dir.y * 680,
+          radius: 7,
+          damage: 18,
+          knockback: 220,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 80,
+          life: 1.6,
+          color: '#0284c7',
+        });
+        break;
+      }
+
+      case 'trident': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.26;
+        f.activeAttackTimer = 0.26;
+        f.vx += f.facing * 140;
+        this.sound?.playSlash();
+        this.addSlashArc(f.x + f.facing * 20, f.y - 24, f.facing, 105, '#0d9488');
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 70), enemy.y - f.y);
+        if (dist < 90) {
+          this.damageFighter(enemy, f.slot, 19, f.facing * 220, -160, 'SLASH', f.x);
+          enemy.wetTimer = Math.max(enemy.wetTimer, 3.5);
+        }
+        break;
+      }
+
+      case 'claymore': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.38;
+        f.activeAttackTimer = 0.38;
+        f.vx += f.facing * 135;
+        this.sound?.playSlash();
+        this.addSlashArc(f.x + f.facing * 24, f.y - 24, f.facing, 135, '#c7d2fe');
+        this.hitObstaclesInReach(f.x + f.facing * 85, f.y - 24, 90, 32);
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 80), enemy.y - f.y);
+        if (dist < 98) {
+          this.damageFighter(enemy, f.slot, 27, f.facing * 340, -240, 'SLASH', f.x);
+          this.screenShake = 9;
+        }
+        break;
+      }
+
+      case 'drone': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.26;
+        f.activeAttackTimer = 0.26;
+        this.sound?.playLaserBeam();
+        const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 38));
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'DRONE_LASER',
+          x: f.x + f.facing * 24,
+          y: f.y - 38,
+          vx: dir.x * 700,
+          vy: dir.y * 700,
+          radius: 5,
+          damage: 14,
+          knockback: 140,
+          isMetallic: false,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 0,
+          life: 1.2,
+          color: '#4f46e5',
+        });
+        break;
+      }
+
+      case 'vortex': {
+        f.attackStyle = 'SLASH_UP';
+        f.attackAnimDuration = 0.18;
+        f.activeAttackTimer = 0.18;
+        f.vx += f.facing * 170;
+        this.sound?.playSlash();
+        this.addSlashArc(f.x + f.facing * 16, f.y - 22, f.facing, 88, '#34d399');
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 52), enemy.y - f.y);
+        if (dist < 80) {
+          this.damageFighter(enemy, f.slot, 14, f.facing * 160, -120, 'SLASH', f.x);
+        }
+        break;
+      }
+
+      case 'crystal': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.30;
+        f.activeAttackTimer = 0.30;
+        this.sound?.playGlassRise();
+        const dir = normalize(targetPos.x - f.x, targetPos.y - (f.y - 28));
+        for (let i = 0; i < 3; i++) {
+          const spread = (i - 1) * 0.10;
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'AMETHYST_SHARD',
+            x: f.x + f.facing * 24,
+            y: f.y - 28,
+            vx: (dir.x + spread * f.facing) * 600,
+            vy: (dir.y + spread) * 600,
+            radius: 6,
+            damage: 6,
+            knockback: 90,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 1.4,
+            color: '#a855f7',
+          });
+        }
+        break;
+      }
+
+      case 'mortar': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.42;
+        f.activeAttackTimer = 0.42;
+        f.vx -= f.facing * 160;
+        this.sound?.playExplosion();
+        const dx = targetPos.x - f.x;
+        const flightTime = clamp(Math.abs(dx) / 380, 0.5, 1.2);
+        const grav = 680;
+        const vx = dx / flightTime;
+        const vy = -0.5 * grav * flightTime;
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'MORTAR_SHELL',
+          x: f.x + f.facing * 22,
+          y: f.y - 32,
+          vx: clamp(vx, -480, 480),
+          vy,
+          radius: 9,
+          damage: 26,
+          knockback: 320,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: grav,
+          life: 2.5,
+          color: '#52525b',
+        });
+        break;
+      }
+
+      case 'tonfa': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.20;
+        f.activeAttackTimer = 0.20;
+        f.vx += f.facing * 145;
+        this.sound?.playSnap();
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 55), enemy.y - f.y);
+        if (dist < 82) {
+          this.damageFighter(enemy, f.slot, 16, f.facing * 200, -150, 'BLUNT', f.x);
+          if (enemy.hasWeapon && !enemy.weaponBroken && Math.random() < 0.25) {
+            this.dropFighterWeapon(enemy, enemy.facing * 120, -220, false);
+            this.addLog(`TONFA DISARM! Tonfa knocked ${enemy.def.name}'s weapon loose!`, '#3b82f6', true);
+          }
+        }
+        break;
+      }
+
+      case 'god_hand': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.40;
+        f.activeAttackTimer = 0.40;
+        f.vx += f.facing * 140;
+        this.sound?.playHammerSlam();
+        this.addSlashArc(f.x + f.facing * 26, f.y - 24, f.facing, 130, '#f59e0b');
+        this.hitObstaclesInReach(f.x + f.facing * 85, f.y - 24, 90, 32);
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 80), enemy.y - f.y);
+        if (dist < 98) {
+          this.damageFighter(enemy, f.slot, 28, f.facing * 360, -240, 'BLUNT', f.x);
+          this.screenShake = 11;
+        }
+        break;
+      }
     }
   }
 
@@ -2705,6 +3392,727 @@ export class ArenaWorld {
           });
         }
         this.addLog(`Alchemist lobbed a 3-element volatile potion barrage!`, f.def.color);
+        break;
+      }
+
+      case 'crossbow': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        f.vx = -f.facing * 260;
+        f.vy = -280;
+        f.grounded = false;
+        this.sound?.playSniperShot();
+        for (let b = -1; b <= 1; b++) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'CROSSBOW_BOLT',
+            x: f.x + f.facing * 30,
+            y: f.y - 28 + b * 6,
+            vx: f.facing * 980,
+            vy: b * 90,
+            radius: 6,
+            damage: 13,
+            knockback: 180,
+            isMetallic: true,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 120,
+            life: 2.2,
+            color: '#b45309',
+          });
+        }
+        this.addLog(`Crossbow executed back-step and fired a 3-bolt tactical spread!`, f.def.color);
+        break;
+      }
+
+      case 'nunchaku': {
+        f.attackStyle = 'SLASH_UP';
+        f.attackAnimDuration = 0.42;
+        f.activeAttackTimer = 0.42;
+        f.spinDeflectTimer = 0.42;
+        this.sound?.playWeaponClash();
+        for (const p of this.projectiles) {
+          if (p.ownerSlot !== f.slot && Math.hypot(p.x - f.x, p.y - f.y) < 115) {
+            p.vx = -p.vx * 1.25;
+            p.vy = -p.vy + (Math.random() - 0.5) * 120;
+            p.ownerSlot = f.slot;
+            p.reflectedCount++;
+          }
+        }
+        const dist = Math.hypot(enemy.x - f.x, enemy.y - f.y);
+        if (dist < 92) {
+          this.damageFighter(enemy, f.slot, 16, f.facing * 260, -180, 'BLUNT', f.x);
+        }
+        this.spawnBurstParticles(f.x + f.facing * 20, f.y - 24, '#eab308', 18, 220, 'spark');
+        this.addLog(`Nunchaku whirled a golden dragon deflection shield!`, f.def.color);
+        break;
+      }
+
+      case 'plasma': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.35;
+        f.activeAttackTimer = 0.35;
+        this.sound?.playElectroZap();
+        for (let a = 0; a < 8; a++) {
+          const angle = (a / 8) * Math.PI * 2;
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'PLASMA_BALL',
+            x: f.x + Math.cos(angle) * 24,
+            y: f.y - 26 + Math.sin(angle) * 24,
+            vx: Math.cos(angle) * 580,
+            vy: Math.sin(angle) * 580,
+            radius: 9,
+            damage: 12,
+            knockback: 190,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 1.8,
+            color: '#06b6d4',
+            bouncesLeft: 2,
+          });
+        }
+        this.spawnBurstParticles(f.x, f.y - 26, '#06b6d4', 20, 260, 'ring');
+        this.addLog(`Plasma released an omnidirectional 360° Ion Nova!`, f.def.color);
+        break;
+      }
+
+      case 'axe': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        this.startFighterDash(f, f.facing * 520, 0, 0.22, 'NONE');
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'THROWN_WEAPON',
+          weaponDefId: 'axe',
+          x: f.x + f.facing * 25,
+          y: f.y - 26,
+          vx: f.facing * 720,
+          vy: -140,
+          radius: 12,
+          damage: 19,
+          knockback: 290,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 340,
+          life: 2.2,
+          color: '#78350f',
+        });
+        this.sound?.playSlash();
+        this.addLog(`Axe hurled a spinning tomahawk and surged forward!`, f.def.color);
+        break;
+      }
+
+      case 'drill': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playChainsawRev();
+        f.invulnTimer = 0.38;
+        const targetX = clamp(enemy.x - f.facing * 30, ARENA_PADDING_X + 40, ARENA_WIDTH - ARENA_PADDING_X - 40);
+        f.x = targetX;
+        f.y = ARENA_FLOOR_Y;
+        f.vy = -540;
+        f.grounded = false;
+        this.damageFighter(enemy, f.slot, 22, f.facing * 180, -380, 'PIERCE', f.x);
+        this.spawnBurstParticles(f.x, ARENA_FLOOR_Y - 8, '#ea580c', 22, 280, 'spark');
+        this.screenShake = 10;
+        this.addLog(`Drill burrowed underground and erupted beneath ${enemy.def.name}!`, f.def.color);
+        break;
+      }
+
+      case 'shield_blade': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        f.parryTimer = 0.55;
+        f.parryWindowActive = true;
+        f.vx = f.facing * 360;
+        this.sound?.playShieldBlock();
+        const dist = Math.hypot(enemy.x - (f.x + f.facing * 50), enemy.y - f.y);
+        if (dist < 82) {
+          enemy.stunTimer = Math.max(enemy.stunTimer, 0.55);
+          this.damageFighter(enemy, f.slot, 18, f.facing * 340, -180, 'BLUNT', f.x);
+          this.sound?.playSlash();
+          this.addSlashArc(f.x + f.facing * 40, f.y - 24, f.facing, 95, '#94a3b8');
+        }
+        this.spawnBurstParticles(f.x + f.facing * 30, f.y - 24, '#cbd5e1', 14, 200, 'ring');
+        this.addLog(`Shield Blade executed a Templar shield bash & riposte!`, f.def.color);
+        break;
+      }
+
+      case 'needle': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.28;
+        f.activeAttackTimer = 0.28;
+        this.sound?.playSlash();
+        const behindX = enemy.x - f.facing * 45;
+        f.x = clamp(behindX, ARENA_PADDING_X + 35, ARENA_WIDTH - ARENA_PADDING_X - 35);
+        f.facing = f.x < enemy.x ? 1 : -1;
+        enemy.stunTimer = Math.max(enemy.stunTimer, 0.65);
+        enemy.bleedTimer = Math.max(enemy.bleedTimer, 3.0);
+        this.damageFighter(enemy, f.slot, 16, f.facing * 140, -120, 'PIERCE', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#e2e8f0', 20, 240, 'spark');
+        this.addLog(`Needle struck ${enemy.def.name}'s meridian pressure point!`, f.def.color);
+        break;
+      }
+
+      case 'magma': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.48;
+        f.activeAttackTimer = 0.48;
+        this.sound?.playHammerSlam();
+        this.sound?.playFlameRoar();
+        this.screenShake = 10;
+        const geyserX = enemy.x;
+        this.floorZones.push({
+          id: this.nextEntityId++,
+          ownerSlot: f.slot,
+          kind: 'BLUE_FIRE',
+          x: geyserX - 45,
+          width: 90,
+          life: 3.8,
+          maxLife: 3.8,
+        });
+        this.damageFighter(enemy, f.slot, 20, f.facing * 180, -420, 'FIRE', geyserX);
+        enemy.burnTimer = Math.max(enemy.burnTimer, 4.0);
+        this.spawnBurstParticles(geyserX, ARENA_FLOOR_Y - 20, '#f97316', 26, 320, 'flame');
+        this.addLog(`Magma erupted a molten lava geyser under ${enemy.def.name}!`, f.def.color);
+        break;
+      }
+
+      case 'bow': {
+        f.attackStyle = 'RAISE_SUMMON';
+        f.attackAnimDuration = 0.35;
+        f.activeAttackTimer = 0.35;
+        f.vx = -f.facing * 210;
+        f.vy = -290;
+        f.grounded = false;
+        this.sound?.playSlash();
+        for (let i = 0; i < 5; i++) {
+          const offsetX = (i - 2) * 35;
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'WOOD_ARROW',
+            x: enemy.x + offsetX,
+            y: ARENA_TOP + 10,
+            vx: (Math.random() - 0.5) * 60,
+            vy: 750 + i * 40,
+            radius: 6,
+            damage: 10,
+            knockback: 140,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 420,
+            life: 2.0,
+            color: '#15803d',
+          });
+        }
+        this.addLog(`Bow leaped backward and summoned a rain of arrows!`, f.def.color);
+        break;
+      }
+
+      case 'daggers': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.28;
+        f.activeAttackTimer = 0.28;
+        this.sound?.playSlash();
+        const backX = enemy.x - enemy.facing * 42;
+        f.x = clamp(backX, ARENA_PADDING_X + 35, ARENA_WIDTH - ARENA_PADDING_X - 35);
+        f.facing = enemy.facing;
+        enemy.poisonTimer = Math.max(enemy.poisonTimer, 3.5);
+        enemy.bleedTimer = Math.max(enemy.bleedTimer, 3.0);
+        this.damageFighter(enemy, f.slot, 18, f.facing * 220, -140, 'SLASH', f.x);
+        this.spawnBurstParticles(f.x, f.y - 24, '#818cf8', 16, 200, 'smoke');
+        this.addLog(`Daggers backstabbed ${enemy.def.name} with virulent poison!`, f.def.color);
+        break;
+      }
+
+      case 'flail': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.42;
+        f.activeAttackTimer = 0.42;
+        this.sound?.playWeaponClash();
+        const reach = 175;
+        const dist = Math.hypot(enemy.x - f.x, enemy.y - f.y);
+        if (dist < reach) {
+          enemy.x = f.x + f.facing * 60;
+          enemy.chronoSlowTimer = 1.4;
+          this.damageFighter(enemy, f.slot, 22, f.facing * 240, -220, 'BLUNT', f.x);
+          this.screenShake = 8;
+          this.sound?.playHammerSlam();
+        }
+        this.spawnBurstParticles(f.x + f.facing * 80, f.y - 24, '#a8a29e', 18, 220, 'spark');
+        this.addLog(`Flail snagged and dragged ${enemy.def.name} into a spiked ball slam!`, f.def.color);
+        break;
+      }
+
+      case 'mirror': {
+        f.attackStyle = 'RAISE_SUMMON';
+        f.attackAnimDuration = 0.4;
+        f.activeAttackTimer = 0.4;
+        this.sound?.playGlassRise();
+        for (const p of this.projectiles) {
+          if (p.ownerSlot !== f.slot && Math.hypot(p.x - f.x, p.y - f.y) < 140) {
+            p.vx = -p.vx * 1.3;
+            p.vy = -p.vy * 0.7;
+            p.ownerSlot = f.slot;
+            p.reflectedCount++;
+          }
+        }
+        this.laserTracers.push({
+          x1: f.x + f.facing * 25,
+          y1: f.y - 26,
+          x2: f.x + f.facing * 450,
+          y2: f.y - 26,
+          color: '#99f6e4',
+          width: 4,
+          alpha: 0.9,
+        });
+        this.damageFighter(enemy, f.slot, 16, f.facing * 240, -140, 'ELECTRIC', f.x);
+        this.spawnBurstParticles(f.x + f.facing * 25, f.y - 26, '#ccfbf1', 16, 220, 'ring');
+        this.addLog(`Mirror erected a prismatic barrier and beamed refracted light!`, f.def.color);
+        break;
+      }
+
+      case 'cannon': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.38;
+        f.activeAttackTimer = 0.38;
+        f.vx = -f.facing * 460;
+        this.sound?.playExplosion();
+        this.screenShake = 9;
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'CANNONBALL',
+          x: f.x + f.facing * 40,
+          y: f.y - 26,
+          vx: f.facing * 640,
+          vy: -120,
+          radius: 12,
+          damage: 24,
+          knockback: 340,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 780,
+          life: 2.8,
+          color: '#334155',
+          bouncesLeft: 2,
+        });
+        this.addLog(`Cannon fired a heavy bouncing iron cannonball!`, f.def.color);
+        break;
+      }
+
+      case 'fan': {
+        f.attackStyle = 'SLASH_UP';
+        f.attackAnimDuration = 0.34;
+        f.activeAttackTimer = 0.34;
+        this.sound?.playSlash();
+        for (const p of this.projectiles) {
+          if (p.ownerSlot !== f.slot && (p.x - f.x) * f.facing > 0 && Math.abs(p.y - f.y) < 90) {
+            p.vy -= 450;
+            p.vx = f.facing * 620;
+            p.ownerSlot = f.slot;
+          }
+        }
+        for (let i = -1; i <= 1; i++) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'WIND_BLADE',
+            x: f.x + f.facing * 25,
+            y: f.y - 26 + i * 16,
+            vx: f.facing * 820,
+            vy: i * 120,
+            radius: 8,
+            damage: 13,
+            knockback: 200,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 1.4,
+            color: '#f43f5e',
+          });
+        }
+        this.addLog(`Fan swept the arena with razor Kamaitachi wind gusts!`, f.def.color);
+        break;
+      }
+
+      case 'halberd': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.44;
+        f.activeAttackTimer = 0.44;
+        this.sound?.playSlash();
+        f.vx = f.facing * 380;
+        f.vy = -520;
+        f.grounded = false;
+        const landX = clamp(f.x + f.facing * 120, ARENA_PADDING_X + 40, ARENA_WIDTH - ARENA_PADDING_X - 40);
+        this.damageFighter(enemy, f.slot, 24, f.facing * 280, -260, 'SLASH', landX);
+        this.screenShake = 9;
+        this.spawnBurstParticles(landX, ARENA_FLOOR_Y - 14, '#fef08a', 20, 240, 'spark');
+        this.addLog(`Halberd executed a soaring pole-vault guillotine chop!`, f.def.color);
+        break;
+      }
+
+      case 'shuriken': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        this.sound?.playSlash();
+        const oldX = f.x;
+        f.x = clamp(enemy.x + enemy.facing * 50, ARENA_PADDING_X + 40, ARENA_WIDTH - ARENA_PADDING_X - 40);
+        f.facing = f.x < enemy.x ? 1 : -1;
+        this.spawnBurstParticles(oldX, f.y - 24, '#64748b', 18, 200, 'smoke');
+        this.spawnBurstParticles(f.x, f.y - 24, '#1e293b', 14, 180, 'smoke');
+        this.damageFighter(enemy, f.slot, 17, f.facing * 190, -160, 'SLASH', f.x);
+        this.addLog(`Giant Shuriken performed a deceptive Kawarimi smoke swap!`, f.def.color);
+        break;
+      }
+
+      case 'cards': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.34;
+        f.activeAttackTimer = 0.34;
+        this.sound?.playSlash();
+        const angles = [-0.25, 0, 0.25];
+        for (const a of angles) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'PLAYING_CARD',
+            x: f.x + f.facing * 25,
+            y: f.y - 26,
+            vx: f.facing * 820 * Math.cos(a),
+            vy: 820 * Math.sin(a),
+            radius: 7,
+            damage: 12,
+            knockback: 160,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 80,
+            life: 1.8,
+            color: '#dc2626',
+          });
+        }
+        this.addLog(`Cards threw a deceptive trio of razor-edged playing cards!`, f.def.color);
+        break;
+      }
+
+      case 'railgun': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.35;
+        f.activeAttackTimer = 0.35;
+        this.sound?.playElectroZap();
+        this.screenShake = 8;
+        this.damageFighter(enemy, f.slot, 15, f.facing * 520, -180, 'ELECTRIC', f.x);
+        this.spawnBurstParticles(f.x + f.facing * 30, f.y - 26, '#3b82f6', 22, 290, 'ring');
+        this.addLog(`Railgun discharged a high-voltage magnetic repulsor pulse!`, f.def.color);
+        break;
+      }
+
+      case 'bell': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.52;
+        f.activeAttackTimer = 0.52;
+        this.sound?.playHammerSlam();
+        this.sound?.playWeaponClash();
+        this.screenShake = 12;
+        for (let o = this.obstacles.length - 1; o >= 0; o--) {
+          const obs = this.obstacles[o];
+          if (obs.kind === 'GLASS_PILLAR' && Math.abs(obs.x - f.x) < 260) {
+            this.shatterGlassObstacle(obs, f.facing);
+          }
+        }
+        enemy.stunTimer = Math.max(enemy.stunTimer, 0.75);
+        this.damageFighter(enemy, f.slot, 22, f.facing * 280, -240, 'BLUNT', f.x);
+        this.spawnBurstParticles(f.x + f.facing * 40, f.y - 24, '#ca8a04', 24, 280, 'ring');
+        this.addLog(`Bell struck with reverberating 160dB temple acoustics!`, f.def.color);
+        break;
+      }
+
+      case 'staff': {
+        f.attackStyle = 'SLASH_UP';
+        f.attackAnimDuration = 0.36;
+        f.activeAttackTimer = 0.36;
+        this.sound?.playSlash();
+        f.vx = f.facing * 420;
+        f.vy = -440;
+        f.grounded = false;
+        this.damageFighter(enemy, f.slot, 19, f.facing * 260, -220, 'BLUNT', f.x);
+        enemy.grounded = false;
+        enemy.vy = -260;
+        this.spawnBurstParticles(enemy.x, enemy.y - 20, '#fca5a5', 16, 210, 'spark');
+        this.addLog(`Staff executed a Shaolin pole vault dropkick & tripping sweep!`, f.def.color);
+        break;
+      }
+
+      case 'meteor': {
+        f.attackStyle = 'RAISE_SUMMON';
+        f.attackAnimDuration = 0.38;
+        f.activeAttackTimer = 0.38;
+        this.sound?.playLaserBeam();
+        for (let i = 0; i < 3; i++) {
+          const angle = (i / 3) * Math.PI * 2;
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'STAR_SHARD',
+            x: f.x + Math.cos(angle) * 35,
+            y: f.y - 28 + Math.sin(angle) * 35,
+            vx: f.facing * 750 + Math.cos(angle) * 120,
+            vy: Math.sin(angle) * 120,
+            radius: 8,
+            damage: 13,
+            knockback: 180,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 2.2,
+            color: '#7c3aed',
+          });
+        }
+        this.spawnBurstParticles(f.x, f.y - 28, '#ddd6fe', 18, 220, 'ring');
+        this.addLog(`Meteor summoned starlight cosmic shards!`, f.def.color);
+        break;
+      }
+
+      case 'glove': {
+        f.attackStyle = 'SLASH_UP';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        f.vx = f.facing * 440;
+        f.vy = -480;
+        f.grounded = false;
+        this.sound?.playHammerSlam();
+        const dist = Math.hypot(enemy.x - f.x, enemy.y - f.y);
+        if (dist < 92) {
+          this.damageFighter(enemy, f.slot, 24, f.facing * 180, -520, 'BLUNT', f.x);
+          this.screenShake = 9;
+        }
+        this.spawnBurstParticles(f.x + f.facing * 30, f.y - 26, '#b91c1c', 20, 260, 'spark');
+        this.addLog(`Boxing Glove landed a devastating rocket-boosted Uppercut!`, f.def.color);
+        break;
+      }
+
+      case 'saw_blade': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.34;
+        f.activeAttackTimer = 0.34;
+        this.sound?.playChainsawRev();
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'ROLLING_SAW',
+          x: f.x + f.facing * 30,
+          y: ARENA_FLOOR_Y - 12,
+          vx: f.facing * 780,
+          vy: 0,
+          radius: 12,
+          damage: 17,
+          knockback: 190,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 300,
+          life: 3.2,
+          color: '#0f766e',
+          bouncesLeft: 3,
+        });
+        this.addLog(`Saw Blade launched a high-speed floor-ripper saw disc!`, f.def.color);
+        break;
+      }
+
+      case 'speargun': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.35;
+        f.activeAttackTimer = 0.35;
+        this.sound?.playSniperShot();
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'HARPOON_BOLT',
+          x: f.x + f.facing * 35,
+          y: f.y - 26,
+          vx: f.facing * 1150,
+          vy: 0,
+          radius: 7,
+          damage: 18,
+          knockback: -320,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 50,
+          life: 1.6,
+          color: '#0284c7',
+        });
+        this.addLog(`Speargun fired a barbed pneumatic harpoon with drag cable!`, f.def.color);
+        break;
+      }
+
+      case 'trident': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.42;
+        f.activeAttackTimer = 0.42;
+        this.sound?.playFlameRoar();
+        const geyserX = enemy.x;
+        enemy.wetTimer = 5.0;
+        this.damageFighter(enemy, f.slot, 20, f.facing * 180, -440, 'BLUNT', geyserX);
+        this.spawnBurstParticles(geyserX, ARENA_FLOOR_Y - 20, '#0d9488', 24, 280, 'flame');
+        this.addLog(`Trident surged an abyssal ocean geyser under ${enemy.def.name}!`, f.def.color);
+        break;
+      }
+
+      case 'claymore': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.38;
+        f.activeAttackTimer = 0.38;
+        f.vx = f.facing * 280;
+        this.sound?.playSlash();
+        enemy.stunTimer = Math.max(enemy.stunTimer, 0.45);
+        this.damageFighter(enemy, f.slot, 25, f.facing * 320, -200, 'SLASH', f.x);
+        this.screenShake = 9;
+        this.spawnBurstParticles(f.x + f.facing * 45, f.y - 24, '#c7d2fe', 18, 220, 'spark');
+        this.addLog(`Claymore delivered a blunt pommel strike into a highland cleave!`, f.def.color);
+        break;
+      }
+
+      case 'drone': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        this.sound?.playLaserBeam();
+        for (const p of this.projectiles) {
+          if (p.ownerSlot !== f.slot && Math.hypot(p.x - f.x, p.y - f.y) < 160) {
+            p.life = 0;
+            this.spawnBurstParticles(p.x, p.y, '#a5b4fc', 8, 120, 'spark');
+          }
+        }
+        for (let i = -1; i <= 1; i += 2) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'DRONE_LASER',
+            x: f.x + f.facing * 30,
+            y: f.y - 45 + i * 14,
+            vx: f.facing * 1250,
+            vy: 0,
+            radius: 6,
+            damage: 14,
+            knockback: 180,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 1.5,
+            color: '#4f46e5',
+          });
+        }
+        this.addLog(`Drone fired synchronized interceptor laser pulses!`, f.def.color);
+        break;
+      }
+
+      case 'vortex': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        this.sound?.playSlash();
+        enemy.vx = (f.x - enemy.x) * 3.2;
+        this.damageFighter(enemy, f.slot, 19, f.facing * 210, -160, 'SLASH', f.x);
+        this.spawnBurstParticles(f.x + f.facing * 30, f.y - 24, '#047857', 18, 220, 'ring');
+        this.addLog(`Vortex sucked ${enemy.def.name} inward with a sickle gale!`, f.def.color);
+        break;
+      }
+
+      case 'crystal': {
+        f.attackStyle = 'RAISE_SUMMON';
+        f.attackAnimDuration = 0.42;
+        f.activeAttackTimer = 0.42;
+        this.sound?.playGlassRise();
+        const spawnX = f.x + f.facing * 90;
+        this.spawnPillarObstacle(f.slot, spawnX, 38, 210, 'GLASS_PILLAR', 150, 7.5);
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'AMETHYST_SHARD',
+          x: f.x + f.facing * 30,
+          y: f.y - 28,
+          vx: f.facing * 850,
+          vy: -60,
+          radius: 8,
+          damage: 16,
+          knockback: 190,
+          isMetallic: false,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 120,
+          life: 2.0,
+          color: '#9333ea',
+        });
+        this.addLog(`Crystal erected an amethyst spire from the arena bedrock!`, f.def.color);
+        break;
+      }
+
+      case 'mortar': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        f.vx = -f.facing * 380;
+        this.sound?.playExplosion();
+        this.screenShake = 10;
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'MORTAR_SHELL',
+          x: f.x + f.facing * 35,
+          y: f.y - 26,
+          vx: clamp((enemy.x - f.x) * 1.6, -720, 720),
+          vy: -620,
+          radius: 11,
+          damage: 26,
+          knockback: 320,
+          isMetallic: true,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 720,
+          life: 3.0,
+          color: '#3f3f46',
+        });
+        this.addLog(`Mortar lobbed a high-trajectory siege artillery canister!`, f.def.color);
+        break;
+      }
+
+      case 'tonfa': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.32;
+        f.activeAttackTimer = 0.32;
+        this.sound?.playParry();
+        const dist = Math.hypot(enemy.x - f.x, enemy.y - f.y);
+        if (dist < 88) {
+          enemy.stunTimer = Math.max(enemy.stunTimer, 0.75);
+          if (enemy.hasWeapon && enemy.def.canBeBroken) {
+            this.dropFighterWeapon(enemy, enemy.facing * 120, -220, false);
+            this.addLog(`DISARM! Tonfa disarmed ${enemy.def.name}'s weapon!`, '#93c5fd', true);
+          }
+          this.damageFighter(enemy, f.slot, 18, f.facing * 240, -180, 'BLUNT', f.x);
+        }
+        this.spawnBurstParticles(f.x + f.facing * 30, f.y - 24, '#1e3a8a', 16, 200, 'spark');
+        this.addLog(`Tonfa engaged riot control close-quarters disarm lock!`, f.def.color);
+        break;
+      }
+
+      case 'god_hand': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playHammerSlam();
+        this.screenShake = 12;
+        this.spawnProjectile({
+          ownerSlot: f.slot,
+          kind: 'ASTRAL_PALM',
+          x: f.x + f.facing * 45,
+          y: f.y - 28,
+          vx: f.facing * 880,
+          vy: 0,
+          radius: 34,
+          damage: 25,
+          knockback: 580,
+          isMetallic: false,
+          blueFireCoated: f.blueFireCoated,
+          gravity: 0,
+          life: 1.6,
+          color: '#d97706',
+          piercing: true,
+        });
+        this.addLog(`God Hand pushed forward a colossal golden Heavenly Palm!`, f.def.color);
         break;
       }
     }
@@ -3652,6 +5060,562 @@ export class ArenaWorld {
         enemy.burnTimer = 4.5;
         this.damageFighter(enemy, f.slot, 32, f.facing * 340, -220, 'EXPLOSION', enemy.x);
         this.spawnBurstParticles(enemy.x, enemy.y - 24, '#f59e0b', 32, 340, 'spark');
+        break;
+      }
+
+      case 'crossbow': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.42;
+        f.activeAttackTimer = 0.42;
+        this.sound?.playSniperShot();
+        for (let b = 0; b < 12; b++) {
+          const offsetX = (b - 5.5) * 28;
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'CROSSBOW_BOLT',
+            x: enemy.x + offsetX,
+            y: ARENA_TOP + 15,
+            vx: (Math.random() - 0.5) * 80,
+            vy: 920 + b * 20,
+            radius: 6,
+            damage: 8,
+            knockback: 140,
+            isMetallic: true,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 280,
+            life: 2.0,
+            color: '#b45309',
+          });
+        }
+        this.damageFighter(enemy, f.slot, 32, f.facing * 280, -180, 'PIERCE', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#fde68a', 26, 280, 'spark');
+        break;
+      }
+
+      case 'nunchaku': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        this.sound?.playWeaponClash();
+        f.x = enemy.x - f.facing * 35;
+        for (let i = 0; i < 4; i++) {
+          this.slashTrails.push({
+            points: [
+              { x: enemy.x - 30 + i * 15, y: enemy.y - 45 + i * 10 },
+              { x: enemy.x, y: enemy.y - 20 },
+              { x: enemy.x + 30 - i * 15, y: enemy.y + 10 - i * 8 },
+            ],
+            color: '#eab308',
+            width: 4.0,
+            alpha: 1.0,
+          });
+        }
+        this.damageFighter(enemy, f.slot, 34, f.facing * 340, -220, 'BLUNT', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#fef08a', 28, 300, 'spark');
+        break;
+      }
+
+      case 'plasma': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playElectroZap();
+        this.laserTracers.push({
+          x1: f.x,
+          y1: f.y - 26,
+          x2: f.x + f.facing * 920,
+          y2: f.y - 26,
+          color: '#06b6d4',
+          width: 14,
+          alpha: 1.0,
+        });
+        enemy.burnTimer = 4.0;
+        enemy.electroFlash = true;
+        enemy.stunTimer = Math.max(enemy.stunTimer, 0.4);
+        this.damageFighter(enemy, f.slot, 36, f.facing * 380, -160, 'ELECTRIC', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 26, '#a5f3fc', 30, 320, 'ring');
+        break;
+      }
+
+      case 'axe': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        this.sound?.playHammerSlam();
+        this.screenShake = 18;
+        f.x = enemy.x - f.facing * 40;
+        this.damageFighter(enemy, f.slot, 38, f.facing * 360, -280, 'SLASH', enemy.x);
+        this.spawnBurstParticles(enemy.x, ARENA_FLOOR_Y - 16, '#d97706', 32, 340, 'spark');
+        break;
+      }
+
+      case 'drill': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playChainsawRev();
+        this.screenShake = 14;
+        f.x = enemy.x + f.facing * 60;
+        this.damageFighter(enemy, f.slot, 35, f.facing * 440, -240, 'PIERCE', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#fed7aa', 28, 300, 'spark');
+        break;
+      }
+
+      case 'shield_blade': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.48;
+        f.activeAttackTimer = 0.48;
+        this.sound?.playShieldBlock();
+        f.x = enemy.x - f.facing * 40;
+        this.damageFighter(enemy, f.slot, 33, f.facing * 520, -220, 'BLUNT', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#cbd5e1', 26, 290, 'ring');
+        break;
+      }
+
+      case 'needle': {
+        f.attackStyle = 'RAISE_SUMMON';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playSlash();
+        enemy.stunTimer = 1.0;
+        enemy.bleedTimer = 4.5;
+        for (let i = 0; i < 16; i++) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'SENBON_NEEDLE',
+            x: f.x + f.facing * 20,
+            y: f.y - 30 + (i - 8) * 4,
+            vx: f.facing * (1100 + i * 20),
+            vy: (Math.random() - 0.5) * 160,
+            radius: 5,
+            damage: 6,
+            knockback: 110,
+            isMetallic: true,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 40,
+            life: 1.8,
+            color: '#e2e8f0',
+          });
+        }
+        this.damageFighter(enemy, f.slot, 30, f.facing * 120, -100, 'PIERCE', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#e2e8f0', 28, 300, 'spark');
+        break;
+      }
+
+      case 'magma': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        this.sound?.playHammerSlam();
+        this.sound?.playFlameRoar();
+        this.screenShake = 18;
+        for (let i = -1; i <= 1; i++) {
+          const zoneX = enemy.x + i * 75;
+          this.floorZones.push({
+            id: this.nextEntityId++,
+            ownerSlot: f.slot,
+            kind: 'BLUE_FIRE',
+            x: zoneX - 40,
+            width: 80,
+            life: 4.5,
+            maxLife: 4.5,
+          });
+        }
+        this.createExplosion(enemy.x, ARENA_FLOOR_Y - 20, f.slot, 36, 320, false, true);
+        enemy.burnTimer = 5.0;
+        this.damageFighter(enemy, f.slot, 36, f.facing * 340, -320, 'FIRE', enemy.x);
+        break;
+      }
+
+      case 'bow': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.42;
+        f.activeAttackTimer = 0.42;
+        this.sound?.playSniperShot();
+        this.laserTracers.push({
+          x1: f.x,
+          y1: f.y - 28,
+          x2: f.x + f.facing * 950,
+          y2: f.y - 28,
+          color: '#15803d',
+          width: 8,
+          alpha: 1.0,
+        });
+        this.damageFighter(enemy, f.slot, 36, f.facing * 380, -200, 'PIERCE', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#bbf7d0', 26, 290, 'spark');
+        break;
+      }
+
+      case 'daggers': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playSlash();
+        f.x = enemy.x - enemy.facing * 40;
+        f.facing = enemy.facing;
+        enemy.bleedTimer = 5.0;
+        enemy.poisonTimer = 4.0;
+        for (let i = 0; i < 4; i++) {
+          this.slashTrails.push({
+            points: [
+              { x: enemy.x - 35 + i * 16, y: enemy.y - 40 },
+              { x: enemy.x, y: enemy.y - 20 },
+              { x: enemy.x + 35 - i * 16, y: enemy.y },
+            ],
+            color: '#818cf8',
+            width: 3.5,
+            alpha: 1.0,
+          });
+        }
+        this.damageFighter(enemy, f.slot, 36, f.facing * 260, -160, 'SLASH', f.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#1e1b4b', 28, 300, 'smoke');
+        break;
+      }
+
+      case 'flail': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.52;
+        f.activeAttackTimer = 0.52;
+        this.sound?.playHammerSlam();
+        this.screenShake = 15;
+        this.damageFighter(enemy, f.slot, 35, f.facing * 380, -320, 'BLUNT', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#a8a29e', 28, 310, 'spark');
+        break;
+      }
+
+      case 'mirror': {
+        f.attackStyle = 'RAISE_SUMMON';
+        f.attackAnimDuration = 0.48;
+        f.activeAttackTimer = 0.48;
+        this.sound?.playGlassShatter();
+        for (let i = 0; i < 4; i++) {
+          const px = enemy.x + (i % 2 === 0 ? -90 : 90);
+          const py = enemy.y - 60 + i * 30;
+          this.laserTracers.push({
+            x1: px,
+            y1: py,
+            x2: enemy.x,
+            y2: enemy.y - 20,
+            color: '#99f6e4',
+            width: 5,
+            alpha: 0.95,
+          });
+        }
+        this.damageFighter(enemy, f.slot, 34, f.facing * 280, -240, 'ELECTRIC', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#ccfbf1', 30, 320, 'shard');
+        break;
+      }
+
+      case 'cannon': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playExplosion();
+        this.screenShake = 18;
+        this.createExplosion(enemy.x, enemy.y - 20, f.slot, 38, 440, false, f.blueFireCoated);
+        this.damageFighter(enemy, f.slot, 38, f.facing * 440, -280, 'EXPLOSION', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#94a3b8', 32, 340, 'smoke');
+        break;
+      }
+
+      case 'fan': {
+        f.attackStyle = 'SLASH_UP';
+        f.attackAnimDuration = 0.46;
+        f.activeAttackTimer = 0.46;
+        this.sound?.playSlash();
+        for (let i = -2; i <= 2; i++) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'WIND_BLADE',
+            x: f.x + f.facing * 25,
+            y: f.y - 26 + i * 18,
+            vx: f.facing * 880,
+            vy: i * 140,
+            radius: 9,
+            damage: 10,
+            knockback: 220,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 0,
+            life: 1.5,
+            color: '#f43f5e',
+          });
+        }
+        this.damageFighter(enemy, f.slot, 32, f.facing * 260, -480, 'SLASH', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#fecdd3', 28, 300, 'ring');
+        break;
+      }
+
+      case 'halberd': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        this.sound?.playSlash();
+        this.screenShake = 16;
+        f.x = enemy.x - f.facing * 35;
+        this.damageFighter(enemy, f.slot, 37, f.facing * 320, -340, 'SLASH', enemy.x);
+        this.spawnBurstParticles(enemy.x, ARENA_FLOOR_Y - 14, '#fef08a', 30, 320, 'spark');
+        break;
+      }
+
+      case 'shuriken': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playSlash();
+        for (let i = 0; i < 4; i++) {
+          const dirX = i % 2 === 0 ? 1 : -1;
+          const dirY = i < 2 ? -1 : 1;
+          this.slashTrails.push({
+            points: [
+              { x: enemy.x - dirX * 90, y: enemy.y + dirY * 60 },
+              { x: enemy.x, y: enemy.y - 20 },
+              { x: enemy.x + dirX * 90, y: enemy.y - dirY * 60 },
+            ],
+            color: '#64748b',
+            width: 4.5,
+            alpha: 1.0,
+          });
+        }
+        this.damageFighter(enemy, f.slot, 33, f.facing * 260, -220, 'SLASH', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#1e293b', 28, 300, 'spark');
+        break;
+      }
+
+      case 'cards': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playExplosion();
+        for (let i = 0; i < 16; i++) {
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'PLAYING_CARD',
+            x: f.x + f.facing * 20,
+            y: f.y - 26,
+            vx: f.facing * (780 + i * 25),
+            vy: (Math.random() - 0.5) * 320,
+            radius: 7,
+            damage: 7,
+            knockback: 140,
+            isMetallic: false,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 80,
+            life: 2.0,
+            color: '#dc2626',
+          });
+        }
+        this.damageFighter(enemy, f.slot, 34, f.facing * 300, -220, 'EXPLOSION', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#fee2e2', 30, 320, 'spark');
+        break;
+      }
+
+      case 'railgun': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.42;
+        f.activeAttackTimer = 0.42;
+        this.sound?.playElectroZap();
+        this.screenShake = 18;
+        this.laserTracers.push({
+          x1: enemy.x,
+          y1: ARENA_TOP,
+          x2: enemy.x,
+          y2: ARENA_FLOOR_Y,
+          color: '#2563eb',
+          width: 10,
+          alpha: 1.0,
+        });
+        this.damageFighter(enemy, f.slot, 39, f.facing * 340, -320, 'PIERCE', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#bfdbfe', 32, 340, 'spark');
+        break;
+      }
+
+      case 'bell': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        this.sound?.playWeaponClash();
+        this.screenShake = 19;
+        enemy.stunTimer = 1.2;
+        this.damageFighter(enemy, f.slot, 35, f.facing * 380, -280, 'BLUNT', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#fef9c3', 34, 350, 'ring');
+        break;
+      }
+
+      case 'staff': {
+        f.attackStyle = 'SLASH_UP';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playHammerSlam();
+        f.x = enemy.x - f.facing * 35;
+        this.damageFighter(enemy, f.slot, 34, f.facing * 320, -320, 'BLUNT', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#fca5a5', 28, 300, 'spark');
+        break;
+      }
+
+      case 'meteor': {
+        f.attackStyle = 'RAISE_SUMMON';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playExplosion();
+        this.screenShake = 17;
+        for (let m = 0; m < 4; m++) {
+          const mx = enemy.x + (m - 1.5) * 55;
+          this.createExplosion(mx, ARENA_FLOOR_Y - 20, f.slot, 12, 180, false, false);
+        }
+        this.damageFighter(enemy, f.slot, 36, f.facing * 320, -260, 'EXPLOSION', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#ddd6fe', 32, 330, 'ring');
+        break;
+      }
+
+      case 'glove': {
+        f.attackStyle = 'SLASH_UP';
+        f.attackAnimDuration = 0.52;
+        f.activeAttackTimer = 0.52;
+        this.sound?.playHammerSlam();
+        this.screenShake = 18;
+        f.x = enemy.x - f.facing * 30;
+        this.damageFighter(enemy, f.slot, 38, f.facing * 440, -360, 'BLUNT', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#fecaca', 30, 320, 'spark');
+        break;
+      }
+
+      case 'saw_blade': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.48;
+        f.activeAttackTimer = 0.48;
+        this.sound?.playChainsawRev();
+        for (let i = 0; i < 4; i++) {
+          const dir = i % 2 === 0 ? 1 : -1;
+          this.spawnProjectile({
+            ownerSlot: f.slot,
+            kind: 'ROLLING_SAW',
+            x: f.x + f.facing * 20,
+            y: ARENA_FLOOR_Y - 12,
+            vx: dir * (700 + i * 50),
+            vy: 0,
+            radius: 12,
+            damage: 14,
+            knockback: 180,
+            isMetallic: true,
+            blueFireCoated: f.blueFireCoated,
+            gravity: 300,
+            life: 3.5,
+            color: '#0f766e',
+            bouncesLeft: 4,
+          });
+        }
+        enemy.bleedTimer = 4.5;
+        this.damageFighter(enemy, f.slot, 34, f.facing * 280, -220, 'SLASH', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#99f6e4', 28, 300, 'spark');
+        break;
+      }
+
+      case 'speargun': {
+        f.attackStyle = 'THRUST';
+        f.attackAnimDuration = 0.45;
+        f.activeAttackTimer = 0.45;
+        this.sound?.playExplosion();
+        enemy.wetTimer = 6.0;
+        this.damageFighter(enemy, f.slot, 35, f.facing * 320, -320, 'EXPLOSION', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#bae6fd', 28, 300, 'ring');
+        break;
+      }
+
+      case 'trident': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.52;
+        f.activeAttackTimer = 0.52;
+        this.sound?.playFlameRoar();
+        enemy.wetTimer = 6.0;
+        this.damageFighter(enemy, f.slot, 35, f.facing * 300, -420, 'BLUNT', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#5eead4', 30, 320, 'flame');
+        break;
+      }
+
+      case 'claymore': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        this.sound?.playSlash();
+        this.screenShake = 15;
+        this.damageFighter(enemy, f.slot, 37, f.facing * 420, -260, 'SLASH', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#c7d2fe', 30, 320, 'spark');
+        break;
+      }
+
+      case 'drone': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.5;
+        f.activeAttackTimer = 0.5;
+        this.sound?.playExplosion();
+        this.screenShake = 16;
+        for (let i = 0; i < 4; i++) {
+          const dx = enemy.x + (i - 1.5) * 45;
+          this.createExplosion(dx, enemy.y - 20, f.slot, 14, 200, false, false);
+        }
+        this.damageFighter(enemy, f.slot, 35, f.facing * 320, -280, 'EXPLOSION', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#a5b4fc', 32, 330, 'smoke');
+        break;
+      }
+
+      case 'vortex': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.48;
+        f.activeAttackTimer = 0.48;
+        this.sound?.playSlash();
+        enemy.bleedTimer = 4.0;
+        this.damageFighter(enemy, f.slot, 34, f.facing * 260, -240, 'SLASH', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#a7f3d0', 28, 300, 'ring');
+        break;
+      }
+
+      case 'crystal': {
+        f.attackStyle = 'RAISE_SUMMON';
+        f.attackAnimDuration = 0.52;
+        f.activeAttackTimer = 0.52;
+        this.sound?.playGlassShatter();
+        this.damageFighter(enemy, f.slot, 35, f.facing * 300, -280, 'PIERCE', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#f3e8ff', 32, 330, 'shard');
+        break;
+      }
+
+      case 'mortar': {
+        f.attackStyle = 'SHOOT_RECOIL';
+        f.attackAnimDuration = 0.52;
+        f.activeAttackTimer = 0.52;
+        this.sound?.playExplosion();
+        this.screenShake = 20;
+        for (let s = 0; s < 5; s++) {
+          const sx = ARENA_PADDING_X + 80 + s * 160;
+          this.createExplosion(sx, ARENA_FLOOR_Y - 15, f.slot, 16, 220, false, false);
+        }
+        this.damageFighter(enemy, f.slot, 39, f.facing * 460, -320, 'EXPLOSION', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#a1a1aa', 34, 350, 'smoke');
+        break;
+      }
+
+      case 'tonfa': {
+        f.attackStyle = 'SLASH_DOWN';
+        f.attackAnimDuration = 0.48;
+        f.activeAttackTimer = 0.48;
+        this.sound?.playParry();
+        if (enemy.hasWeapon && enemy.def.canBeBroken) {
+          this.dropFighterWeapon(enemy, enemy.facing * 120, -220, false);
+        }
+        this.damageFighter(enemy, f.slot, 34, f.facing * 340, -240, 'BLUNT', enemy.x);
+        this.spawnBurstParticles(enemy.x, enemy.y - 24, '#93c5fd', 28, 300, 'spark');
+        break;
+      }
+
+      case 'god_hand': {
+        f.attackStyle = 'CAST_PALM';
+        f.attackAnimDuration = 0.55;
+        f.activeAttackTimer = 0.55;
+        this.sound?.playHammerSlam();
+        this.screenShake = 22;
+        this.damageFighter(enemy, f.slot, 40, f.facing * 480, -360, 'BLUNT', enemy.x);
+        this.spawnBurstParticles(enemy.x, ARENA_FLOOR_Y - 20, '#fef3c7', 36, 380, 'ring');
         break;
       }
     }
@@ -4864,17 +6828,28 @@ export class ArenaWorld {
           this.createExplosion(p.x, p.y, p.ownerSlot, p.damage, p.knockback, false, p.blueFireCoated);
         } else if (p.kind === 'ALCHEMY_FLASK') {
           this.triggerAlchemyBurst(p.x, p.y, p.ownerSlot, p.brewKind || 'FIRE', p.blueFireCoated);
+        } else if (p.kind === 'CANNONBALL' || p.kind === 'MORTAR_SHELL') {
+          this.createExplosion(p.x, p.y, p.ownerSlot, p.damage, p.knockback, false, p.blueFireCoated);
         } else {
           const hitDir = p.vx >= 0 ? 1 : -1;
           const fromAbove = p.vy > Math.abs(p.vx) * 1.15 && prevY < target.y - 44;
           const dmgKind =
-            p.kind === 'SNIPER_BULLET' || p.kind === 'CHRONO_BOLT'
+            p.kind === 'SNIPER_BULLET' ||
+            p.kind === 'CHRONO_BOLT' ||
+            p.kind === 'CROSSBOW_BOLT' ||
+            p.kind === 'WOOD_ARROW' ||
+            p.kind === 'SENBON_NEEDLE' ||
+            p.kind === 'HARPOON_BOLT' ||
+            p.kind === 'AMETHYST_SHARD' ||
+            p.kind === 'RAILGUN_SLUG'
               ? 'PIERCE'
               : p.kind === 'FLAME_STREAM'
                 ? 'FIRE'
-                : p.kind === 'BOULDER'
+                : p.kind === 'BOULDER' || p.kind === 'ASTRAL_PALM'
                   ? 'BLUNT'
-                  : 'SLASH';
+                  : p.kind === 'PLASMA_BALL' || p.kind === 'DRONE_LASER' || p.kind === 'STAR_SHARD'
+                    ? 'ELECTRIC'
+                    : 'SLASH';
           const dealt = this.damageFighter(
             target,
             p.ownerSlot,
@@ -4905,6 +6880,15 @@ export class ArenaWorld {
             } else if (p.kind === 'CHRONO_BOLT') {
               target.chronoSlowTimer = Math.max(target.chronoSlowTimer, 2.0);
               this.spawnBurstParticles(target.x, target.y - 22, '#eab308', 10, 140, 'ring');
+            } else if (p.kind === 'HARPOON_BOLT') {
+              const pullDir = shooter.x < target.x ? -1 : 1;
+              target.vx = -pullDir * 420;
+              target.vy = -180;
+              target.grounded = false;
+              this.addLog(`${target.def.name} was harpooned and reeled in!`, '#0284c7');
+            } else if (p.kind === 'SENBON_NEEDLE') {
+              target.stunTimer = Math.max(target.stunTimer, 0.35);
+              target.bleedTimer = Math.max(target.bleedTimer, 2.5);
             }
 
             // Attach stuck projectile into ragdoll skeleton bone
@@ -4913,19 +6897,22 @@ export class ArenaWorld {
               p.kind === 'ICE_SHARD' ||
               p.kind === 'GLASS_DAGGER' ||
               p.kind === 'VENOM_GLOB' ||
-              p.kind === 'MAGNET_BOLT'
+              p.kind === 'MAGNET_BOLT' ||
+              p.kind === 'CROSSBOW_BOLT' ||
+              p.kind === 'WOOD_ARROW' ||
+              p.kind === 'SENBON_NEEDLE'
             ) {
               this.attachStuckProjectile(target, p);
             }
           }
 
-          if (p.kind === 'SNIPER_BULLET') {
+          if (p.kind === 'SNIPER_BULLET' || p.kind === 'RAILGUN_SLUG') {
             this.laserTracers.push({
               x1: prevX,
               y1: prevY,
               x2: p.x,
               y2: p.y,
-              color: '#eab308',
+              color: p.kind === 'RAILGUN_SLUG' ? '#3b82f6' : '#eab308',
               width: 3.2,
               alpha: 0.95,
             });
@@ -4961,11 +6948,22 @@ export class ArenaWorld {
           p.vy = -p.vy * 0.65;
           continue;
         }
-        if ((p.kind === 'BOULDER' || p.kind === 'ALCHEMY_FLASK') && p.bouncesLeft && p.bouncesLeft > 0) {
+        if (
+          (p.kind === 'BOULDER' ||
+            p.kind === 'ALCHEMY_FLASK' ||
+            p.kind === 'PLASMA_BALL' ||
+            p.kind === 'CANNONBALL' ||
+            p.kind === 'ROLLING_SAW') &&
+          p.bouncesLeft &&
+          p.bouncesLeft > 0
+        ) {
           p.bouncesLeft--;
           if (p.y > ARENA_FLOOR_Y) {
             p.y = ARENA_FLOOR_Y - 4;
-            p.vy = -Math.abs(p.vy) * 0.62;
+            p.vy = -Math.abs(p.vy) * (p.kind === 'ROLLING_SAW' ? 0.2 : 0.62);
+            if (p.kind === 'ROLLING_SAW') {
+              p.vy = 0;
+            }
           }
           if (p.x < ARENA_PADDING_X || p.x > ARENA_WIDTH - ARENA_PADDING_X) {
             p.x = clamp(p.x, ARENA_PADDING_X + 6, ARENA_WIDTH - ARENA_PADDING_X - 6);
@@ -4979,18 +6977,18 @@ export class ArenaWorld {
           continue;
         }
 
-        if (p.kind === 'SNIPER_BULLET') {
+        if (p.kind === 'SNIPER_BULLET' || p.kind === 'RAILGUN_SLUG') {
           this.laserTracers.push({
             x1: prevX,
             y1: prevY,
             x2: clamp(p.x, ARENA_PADDING_X, ARENA_WIDTH - ARENA_PADDING_X),
             y2: clamp(p.y, ARENA_TOP, ARENA_FLOOR_Y),
-            color: '#facc15',
+            color: p.kind === 'RAILGUN_SLUG' ? '#3b82f6' : '#facc15',
             width: 2.8,
             alpha: 0.9,
           });
         }
-        if (p.kind === 'ROCKET') {
+        if (p.kind === 'ROCKET' || p.kind === 'MORTAR_SHELL' || p.kind === 'CANNONBALL') {
           this.createExplosion(
             clamp(p.x, ARENA_PADDING_X, ARENA_WIDTH - ARENA_PADDING_X),
             clamp(p.y, ARENA_TOP, ARENA_FLOOR_Y),
@@ -5912,6 +7910,17 @@ export class ArenaWorld {
           f.poisonTickAccum = 0;
           f.hp = Math.max(1, f.hp - 2);
           this.spawnBurstParticles(f.x, f.y - 22, '#84cc16', 3, 60, 'spark');
+        }
+      }
+
+      // Bleed DoT ticks (2 dmg every 0.5s)
+      if (f.bleedTimer > 0) {
+        f.bleedTimer -= dt;
+        f.bleedTickAccum += dt;
+        if (f.bleedTickAccum >= 0.5) {
+          f.bleedTickAccum = 0;
+          f.hp = Math.max(1, f.hp - 2);
+          this.spawnBurstParticles(f.x, f.y - 20, '#b91c1c', 4, 70, 'spark');
         }
       }
 
